@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MediaSniffer Pro — Settings</title>
+    <link rel="stylesheet" href="./options.css" />
+  </head>
+  <body>
+    <div class="container">
+      <h1>MediaSniffer Pro — Settings</h1>
+
+      <section>
+        <h2>Detection</h2>
+        <label class="toggle"><input type="checkbox" data-key="detectDom" /> DOM detection</label>
+        <label class="toggle"><input type="checkbox" data-key="detectNetwork" /> Network detection</label>
+        <label class="toggle"><input type="checkbox" data-key="detectPerformance" /> Performance API detection</label>
+        <label class="toggle"><input type="checkbox" data-key="detectHls" /> HLS (.m3u8) detection</label>
+        <label class="toggle"><input type="checkbox" data-key="detectDash" /> DASH (.mpd) detection</label>
+      </section>
+
+      <section>
+        <h2>What to show</h2>
+        <label class="toggle"><input type="checkbox" data-key="showAudio" /> Show audio</label>
+        <label class="toggle"><input type="checkbox" data-key="showSubtitles" /> Show subtitles</label>
+        <label class="toggle"><input type="checkbox" data-key="showThumbnails" /> Show thumbnails</label>
+        <label class="toggle"><input type="checkbox" data-key="hideSegments" /> Hide stream segments (.ts/.m4s)</label>
+        <label class="field">
+          Minimum file size (KB)
+          <input type="number" min="0" data-key="minFileSizeKb" />
+        </label>
+      </section>
+
+      <section>
+        <h2>Output</h2>
+        <label class="field">
+          Preferred quality
+          <select data-key="preferredQuality">
+            <option value="highest">Highest</option>
+            <option value="lowest">Lowest</option>
+            <option value="ask">Ask each time</option>
+          </select>
+        </label>
+        <label class="field">
+          Preferred format
+          <select data-key="preferredFormat">
+            <option value="original">Original</option>
+            <option value="mp4">MP4</option>
+            <option value="mkv">MKV</option>
+            <option value="webm">WebM</option>
+          </select>
+        </label>
+        <label class="field">
+          Filename template
+          <input type="text" data-key="filenameTemplate" placeholder="{title}.{ext}" />
+        </label>
+        <p class="hint">Tokens: {title} {pageTitle} {domain} {date} {quality} {mediaType} {ext}</p>
+      </section>
+
+      <section>
+        <h2>Stream downloading</h2>
+        <label class="field">
+          Concurrent segment downloads
+          <input type="number" min="1" max="12" data-key="streamConcurrency" />
+        </label>
+        <label class="toggle">
+          <input type="checkbox" data-key="advancedFfmpegFallback" /> Advanced ffmpeg.wasm fallback
+        </label>
+        <p class="hint">
+          Clear HLS streams are downloaded and remuxed to MP4 in your browser (mux.js).
+          The ffmpeg fallback is for unusual codecs; it must be packaged locally and is
+          off by default.
+        </p>
+      </section>
+
+      <section>
+        <h2>Companion &amp; privacy</h2>
+        <label class="toggle"><input type="checkbox" data-key="nativeHelperEnabled" /> Enable desktop helper integration</label>
+        <label class="toggle"><input type="checkbox" data-key="privacyMode" /> Privacy mode (no telemetry, minimal storage)</label>
+        <label class="toggle"><input type="checkbox" data-key="debugLogs" /> Debug logs (redacted)</label>
+      </section>
+
+      <section>
+        <h2>Domain policy</h2>
+        <label class="field">
+          Allowlist (one domain per line — if set, only these pages are scanned)
+          <textarea data-key="allowlist" rows="3" placeholder="example.com"></textarea>
+        </label>
+        <label class="field">
+          Blocklist (one domain per line)
+          <textarea data-key="blocklist" rows="3" placeholder="streaming-service.com"></textarea>
+        </label>
+      </section>
+
+      <div class="save-bar">
+        <span id="saved" class="saved-hint"></span>
+        <button id="save" class="primary">Save settings</button>
+      </div>
+    </div>
+    <script type="module" src="./options.ts"></script>
+  </body>
+</html>

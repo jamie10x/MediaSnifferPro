@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MediaSniffer Pro</title>
+    <link rel="stylesheet" href="./popup.css" />
+  </head>
+  <body>
+    <header class="header">
+      <div class="brand">
+        <span class="logo">▶</span>
+        <div>
+          <div class="title">MediaSniffer Pro</div>
+          <div id="domain" class="domain">—</div>
+        </div>
+      </div>
+      <button id="rescan" class="ghost-btn" title="Scan again">⟳</button>
+    </header>
+
+    <div id="native-status" class="native-status hidden"></div>
+
+    <section id="jobs" class="jobs"></section>
+
+    <main id="list" class="list"></main>
+
+    <footer class="footer">
+      <span id="count" class="count">0 items</span>
+      <button id="open-options" class="link-btn">Settings</button>
+    </footer>
+
+    <div id="modal-root"></div>
+    <script type="module" src="./popup.ts"></script>
+  </body>
+</html>

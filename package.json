@@ -1,0 +1,23 @@
+{
+  "name": "media-sniffer-pro",
+  "version": "1.0.0",
+  "description": "Detect and download media files available on the current page.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "zip": "node scripts/zip.mjs",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "mux.js": "^7.0.3"
+  },
+  "devDependencies": {
+    "@crxjs/vite-plugin": "^2.0.0-beta.28",
+    "@types/chrome": "^0.0.287",
+    "@types/node": "^22.9.0",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.10"
+  }
+}

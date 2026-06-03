@@ -1,0 +1,56 @@
+// Content script: orchestrates the DOM/shadow/performance/metadata detectors,
+// dedups locally, and reports candidates + page signals to the background.
+
+import type { ContentMessage, RawCandidate } from '@shared/message-types';
+import { detectFromRoot, detectMetadata } from './dom-detector';
+import { detectInShadowDom } from './shadow-dom-detector';
+import { detectFromPerformance } from './performance-detector';
+import { collectPageSignals, installPageSignalProbes } from './page-signal-detector';
+import { observeMediaChanges } from './media-element-observer';
+
+installPageSignalProbes();
+
+const reported = new Set<string>();
+
+function collectAll(): RawCandidate[] {
+  const all: RawCandidate[] = [
+    ...detectFromRoot(document),
+    ...detectInShadowDom(),
+    ...detectFromPerformance(),
+    ...detectMetadata(),
+  ];
+  // Local dedup by raw URL before sending (background dedups canonically again).
+  const seen = new Set<string>();
+  return all.filter((c) => {
+    if (!c.url || seen.has(c.url)) return false;
+    seen.add(c.url);
+    return true;
+  });
+}
+
+function scanAndReport(force = false): void {
+  const candidates = collectAll();
+  const fresh = force ? candidates : candidates.filter((c) => !reported.has(c.url));
+  fresh.forEach((c) => reported.add(c.url));
+
+  const signals = collectPageSignals();
+  const message: ContentMessage = { type: 'CANDIDATES_FOUND', candidates: fresh, signals };
+  // Always send signals; only skip when there is genuinely nothing new.
+  if (fresh.length > 0 || force) {
+    void chrome.runtime.sendMessage(message).catch(() => {});
+  } else {
+    void chrome.runtime.sendMessage({ type: 'PAGE_SIGNALS', signals } satisfies ContentMessage).catch(() => {});
+  }
+}
+
+// Initial scan + observe future changes.
+scanAndReport(true);
+observeMediaChanges(() => scanAndReport(false));
+
+// Popup "Scan again" triggers a forced re-report.
+chrome.runtime.onMessage.addListener((msg: { type?: string }) => {
+  if (msg?.type === 'RESCAN') {
+    reported.clear();
+    scanAndReport(true);
+  }
+});
