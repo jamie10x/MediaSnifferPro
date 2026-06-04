@@ -14,12 +14,13 @@ import {
   type TabState,
   type UiRequest,
   type UiResponse,
+  type WidgetSummary,
 } from '@shared/message-types';
 import { classifyMedia, decideSupportStatus } from '@shared/media-utils';
 import { classifyPageSignals } from '@shared/drm-detector';
 import { canonicalKey, getDomain, getExtension, getFilenameFromUrl, matchesDomainList } from '@shared/url-utils';
 import { redactHeaders } from '@shared/privacy-utils';
-import { loadSettings, onSettingsChanged } from '@shared/settings';
+import { loadSettings, onSettingsChanged, patchSettings } from '@shared/settings';
 import { setDebugLogging, logger } from '@shared/logger';
 import {
   findCandidateAnyTab,
@@ -34,7 +35,7 @@ import {
 } from './candidate-store';
 import { installNetworkListener, updateNetworkConfig, type NetworkHit } from './network-listener';
 import { installTabLifecycle } from './tab-lifecycle';
-import { installDownloadEvents, startDownload } from './download-manager';
+import { installDownloadEvents, startDownload, startSubtitleDownload } from './download-manager';
 import {
   cancelNativeDownload,
   getNativeStatus,
@@ -71,6 +72,43 @@ function pushToTab(tabId: number, msg: PushMessage): void {
 async function pushState(tabId: number): Promise<void> {
   const state = await buildTabState(tabId);
   pushToTab(tabId, { type: 'STATE_UPDATED', state });
+  void pushWidget(tabId);
+}
+
+// Build + send the in-page widget summary to a tab's content script.
+async function pushWidget(tabId: number): Promise<void> {
+  const settings = await loadSettings();
+  const page = await getPageInfo(tabId);
+  const domain = page.pageDomain;
+  const disabled =
+    !settings.inPageWidgetEnabled ||
+    matchesDomainList(page.pageUrl, settings.widgetDisabledDomains) ||
+    matchesDomainList(page.pageUrl, settings.blocklist);
+
+  let summary: WidgetSummary;
+  if (disabled) {
+    summary = { enabled: false, items: [], helperConnected: false };
+  } else {
+    const candidates = cleanCandidateList(await listCandidates(tabId)).filter(isBatchDownloadable);
+    const native = await getNativeStatus();
+    summary = {
+      enabled: true,
+      helperConnected: native.installed,
+      items: candidates.slice(0, 12).map((c) => ({
+        id: c.id,
+        label: c.filename || getFilenameFromUrl(c.url) || domain,
+        mediaType: c.mediaType,
+        quality: c.qualityLabel ?? (c.height ? `${c.height}p` : undefined),
+        needsHelper: c.supportStatus === 'needs_native_companion',
+      })),
+    };
+  }
+
+  try {
+    await chrome.tabs.sendMessage(tabId, { type: 'WIDGET_UPDATE', summary });
+  } catch {
+    // No content script (e.g. chrome:// page) — ignore.
+  }
 }
 
 function pushJob(tabId: number, job: DownloadJob): void {
@@ -359,7 +397,14 @@ async function handleUiRequest(req: UiRequest, sender: chrome.runtime.MessageSen
     case 'START_DOWNLOAD': {
       const candidate = await findCandidateAnyTab(req.candidateId);
       if (!candidate) return { type: 'ERROR', message: 'candidate_not_found' };
-      await startDownload(candidate, req.variantId, (job) => pushJob(candidate.tabId, job));
+      await startDownload(candidate, req.variantId, (job) => pushJob(candidate.tabId, job), req.mode ?? 'video');
+      await pushState(candidate.tabId);
+      return { type: 'OK' };
+    }
+    case 'DOWNLOAD_SUBTITLE': {
+      const candidate = await findCandidateAnyTab(req.candidateId);
+      if (!candidate) return { type: 'ERROR', message: 'candidate_not_found' };
+      await startSubtitleDownload(candidate, req.subtitleUrl, req.label, (job) => pushJob(candidate.tabId, job));
       await pushState(candidate.tabId);
       return { type: 'OK' };
     }
@@ -447,6 +492,23 @@ async function handleUiRequest(req: UiRequest, sender: chrome.runtime.MessageSen
       await upsertCandidate(candidate);
       await startDownload(candidate, entry.redownload.variantId, (job) => pushJob(tabId, job));
       await pushState(tabId);
+      return { type: 'OK' };
+    }
+    case 'OPEN_POPUP': {
+      try {
+        await (chrome.action as unknown as { openPopup: () => Promise<void> }).openPopup();
+      } catch {
+        /* openPopup needs a recent Chrome + user gesture; ignore if unavailable */
+      }
+      return { type: 'OK' };
+    }
+    case 'DISABLE_WIDGET_HERE': {
+      const settings = await loadSettings();
+      if (!settings.widgetDisabledDomains.includes(req.domain)) {
+        await patchSettings({ widgetDisabledDomains: [...settings.widgetDisabledDomains, req.domain] });
+      }
+      const tabId = sender.tab?.id ?? (await activeTabId());
+      if (tabId != null) void pushWidget(tabId);
       return { type: 'OK' };
     }
     case 'GET_NATIVE_STATUS': {

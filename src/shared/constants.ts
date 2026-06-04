@@ -132,6 +132,10 @@ export interface Settings {
   downloadFolder: string;
   /** Desktop notifications when a download finishes. */
   notificationsEnabled: boolean;
+  /** Show a floating download button on pages with downloadable media. */
+  inPageWidgetEnabled: boolean;
+  /** Domains where the in-page widget is disabled (per-site). */
+  widgetDisabledDomains: string[];
   privacyMode: boolean;
   debugLogs: boolean;
   allowlist: string[];
@@ -156,6 +160,8 @@ export const DEFAULT_SETTINGS: Settings = {
   streamConcurrency: 6,
   downloadFolder: '',
   notificationsEnabled: true,
+  inPageWidgetEnabled: false,
+  widgetDisabledDomains: [],
   privacyMode: true,
   debugLogs: false,
   allowlist: [],

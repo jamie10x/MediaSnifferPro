@@ -32,8 +32,11 @@ function activeCount(): number {
   return n;
 }
 
-function ensureMp4(name: string): string {
-  return /\.(mp4|mkv|webm|m4a|mp3)$/i.test(name) ? name : `${name}.mp4`;
+function ensureExt(name: string, mode: DownloadJobRequest['mode']): string {
+  const base = name.replace(/\.(mp4|mkv|webm|m4a|mp3|aac|srt|vtt)$/i, '');
+  if (mode === 'audio') return `${base}.m4a`;
+  if (mode === 'subtitle') return `${base}.srt`;
+  return `${base}.mp4`;
 }
 
 export function startJob(req: DownloadJobRequest, requestId: string, send: Send): void {
@@ -46,7 +49,7 @@ export function startJob(req: DownloadJobRequest, requestId: string, send: Send)
 
   let outputPath: string;
   try {
-    outputPath = resolveOutputPath(req.outputDirectory, ensureMp4(sanitizeFilename(req.outputFilename, 'video')));
+    outputPath = resolveOutputPath(req.outputDirectory, ensureExt(sanitizeFilename(req.outputFilename, 'video'), req.mode));
   } catch (err) {
     send({ type: 'JOB_FAILED', jobId: req.jobId, error: { code: 'bad_output_path', message: (err as Error).message } });
     return;
@@ -82,7 +85,9 @@ async function runJob(tracked: Tracked): Promise<void> {
   tracked.status = 'running';
   const { req, send } = tracked;
 
-  if (req.kind === 'hls') {
+  // Audio extraction & subtitle conversion always go through ffmpeg directly
+  // (the segment engine is video-only). Plain video HLS uses the segment engine.
+  if (req.kind === 'hls' && (req.mode ?? 'video') === 'video') {
     await runHls(tracked, send);
   } else {
     runFfmpegJob(tracked, send);
@@ -139,7 +144,7 @@ async function runHls(tracked: Tracked, send: Send, resumeState?: JobState): Pro
 function runFfmpegJob(tracked: Tracked, send: Send): void {
   const { req, outputPath } = tracked;
   const handle = runFfmpeg(
-    { url: req.url, outputPath, headers: req.headers },
+    { url: req.url, outputPath, mode: req.mode ?? 'video', headers: req.headers },
     {
       onProgress: (p) =>
         send({

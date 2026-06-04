@@ -11,6 +11,8 @@ export interface DownloadJobRequest {
   outputFilename: string;
   outputDirectory?: string;
   variantId?: string;
+  /** 'video' (default) | 'audio' (extract audio) | 'subtitle' (convert to .srt). */
+  mode?: 'video' | 'audio' | 'subtitle';
   headers?: { referer?: string; origin?: string; userAgent?: string };
 }
 

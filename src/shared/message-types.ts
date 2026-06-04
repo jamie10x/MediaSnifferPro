@@ -29,6 +29,27 @@ export interface PageSignals {
 }
 
 // ---------------------------------------------------------------------------
+// In-page widget (background -> content script)
+// ---------------------------------------------------------------------------
+export interface WidgetItem {
+  id: string;
+  label: string;
+  mediaType: string;
+  quality?: string;
+  needsHelper: boolean;
+}
+
+export interface WidgetSummary {
+  enabled: boolean;
+  items: WidgetItem[];
+  helperConnected: boolean;
+}
+
+export type ContentInbound =
+  | { type: 'RESCAN' }
+  | { type: 'WIDGET_UPDATE'; summary: WidgetSummary };
+
+// ---------------------------------------------------------------------------
 // content -> background
 // ---------------------------------------------------------------------------
 export type ContentMessage =
@@ -41,7 +62,8 @@ export type ContentMessage =
 export type UiRequest =
   | { type: 'GET_STATE'; tabId?: number }
   | { type: 'RESCAN'; tabId: number }
-  | { type: 'START_DOWNLOAD'; candidateId: string; variantId?: string }
+  | { type: 'START_DOWNLOAD'; candidateId: string; variantId?: string; mode?: 'video' | 'audio' }
+  | { type: 'DOWNLOAD_SUBTITLE'; candidateId: string; subtitleUrl: string; label?: string }
   | { type: 'BATCH_DOWNLOAD'; candidateIds: string[] }
   | { type: 'CANCEL_DOWNLOAD'; jobId: string }
   | { type: 'PAUSE_DOWNLOAD'; jobId: string }
@@ -56,6 +78,8 @@ export type UiRequest =
   | { type: 'OPEN_HISTORY_FOLDER'; id: string }
   | { type: 'REDOWNLOAD'; id: string }
   | { type: 'DISMISS_JOB'; jobId: string }
+  | { type: 'OPEN_POPUP' }
+  | { type: 'DISABLE_WIDGET_HERE'; domain: string }
   | { type: 'GET_NATIVE_STATUS' };
 
 export interface TabState {
@@ -102,6 +126,7 @@ export interface DownloadJobRequest {
   outputFilename: string;
   outputDirectory?: string;
   variantId?: string;
+  mode?: 'video' | 'audio' | 'subtitle';
   /** Non-sensitive headers to replay against Referer-checking CDNs (no cookies). */
   headers?: { referer?: string; origin?: string; userAgent?: string };
 }

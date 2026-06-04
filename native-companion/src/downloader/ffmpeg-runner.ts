@@ -14,6 +14,7 @@ const FFMPEG = staticPath && existsSync(staticPath) ? staticPath : 'ffmpeg';
 export interface FfmpegJob {
   url: string;
   outputPath: string;
+  mode?: 'video' | 'audio' | 'subtitle';
   headers?: { referer?: string; origin?: string; userAgent?: string };
 }
 
@@ -55,15 +56,19 @@ function buildArgs(job: FfmpegJob): string[] {
     'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
   args.push('-user_agent', ua);
 
-  args.push(
-    '-i', job.url,
-    '-map', '0:v:0?', '-map', '0:a:0?', // best video + audio if present
-    '-c', 'copy',
-    '-bsf:a', 'aac_adtstoasc',
-    '-movflags', '+faststart',
-    '-progress', 'pipe:1',
-    '-y', job.outputPath,
-  );
+  args.push('-i', job.url);
+
+  if (job.mode === 'audio') {
+    // Extract audio only, preserve codec into an .m4a container.
+    args.push('-vn', '-map', '0:a:0?', '-c:a', 'copy', '-bsf:a', 'aac_adtstoasc');
+  } else if (job.mode === 'subtitle') {
+    // Convert a subtitle track/playlist to .srt.
+    args.push('-map', '0:s:0?');
+  } else {
+    args.push('-map', '0:v:0?', '-map', '0:a:0?', '-c', 'copy', '-bsf:a', 'aac_adtstoasc', '-movflags', '+faststart');
+  }
+
+  args.push('-progress', 'pipe:1', '-y', job.outputPath);
   return args;
 }
 

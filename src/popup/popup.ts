@@ -158,6 +158,14 @@ function renderDetected(state: PopupState): void {
           void popupStore.request({ type: 'START_DOWNLOAD', candidateId, variantId });
           showToast('Download started', 'info', 1600);
         },
+        onDownloadAudio: (candidateId) => {
+          void popupStore.request({ type: 'START_DOWNLOAD', candidateId, mode: 'audio' });
+          showToast('Extracting audio…', 'info', 1600);
+        },
+        onDownloadSubtitle: (candidateId, url, label) => {
+          void popupStore.request({ type: 'DOWNLOAD_SUBTITLE', candidateId, subtitleUrl: url, label });
+          showToast('Downloading subtitle…', 'info', 1600);
+        },
         onCopy: async (candidateId) => {
           const res = await popupStore.request({ type: 'COPY_URL', candidateId });
           if (res.type === 'COPIED') {

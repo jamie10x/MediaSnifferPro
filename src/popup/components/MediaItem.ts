@@ -40,6 +40,8 @@ function chip(text: string, cls = ''): HTMLElement {
 export interface MediaItemProps {
   candidate: MediaCandidate;
   onDownload: (candidateId: string, variantId?: string) => void;
+  onDownloadAudio: (candidateId: string) => void;
+  onDownloadSubtitle: (candidateId: string, url: string, label?: string) => void;
   onCopy: (candidateId: string) => void;
   onDetails: (candidate: MediaCandidate) => void;
   onParse: (candidateId: string) => void;
@@ -110,12 +112,42 @@ export function MediaItem(props: MediaItemProps): HTMLElement {
     );
   }
 
+  // Subtitle tracks (from HLS #EXT-X-MEDIA or attached metadata).
+  if (!isProtected && c.subtitles && c.subtitles.length > 0) {
+    const subs = document.createElement('div');
+    subs.className = 'subs';
+    const heading = document.createElement('div');
+    heading.className = 'subs-heading';
+    heading.textContent = 'Subtitles';
+    subs.appendChild(heading);
+    for (const t of c.subtitles) {
+      const row = document.createElement('div');
+      row.className = 'sub-row';
+      const lbl = document.createElement('span');
+      lbl.className = 'sub-label';
+      lbl.textContent = t.label || t.language || 'Subtitle';
+      const dl = document.createElement('button');
+      dl.className = 'btn-sm';
+      dl.innerHTML = `<span class="icon">${icons.download}</span><span>SRT</span>`;
+      dl.addEventListener('click', () => props.onDownloadSubtitle(c.id, t.url, t.language || t.label));
+      row.append(lbl, dl);
+      subs.appendChild(row);
+    }
+    item.appendChild(subs);
+  }
+
   // Actions.
   const actions = document.createElement('div');
   actions.className = 'actions';
 
+  const videoish = c.mediaType === 'video' || isStream;
+  const downloadable = c.supportStatus === 'downloadable' || c.supportStatus === 'needs_native_companion';
+
   if (c.supportStatus === 'downloadable') {
     actions.appendChild(button('primary', 'download', 'Download', () => props.onDownload(c.id)));
+  }
+  if (videoish && downloadable && !isProtected) {
+    actions.appendChild(button('secondary', 'audio', 'Audio', () => props.onDownloadAudio(c.id)));
   }
   if (isStream && !isProtected) {
     const label = c.variants && c.variants.length ? 'Refresh' : 'Quality';

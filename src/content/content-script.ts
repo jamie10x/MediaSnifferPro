@@ -1,12 +1,13 @@
 // Content script: orchestrates the DOM/shadow/performance/metadata detectors,
 // dedups locally, and reports candidates + page signals to the background.
 
-import type { ContentMessage, RawCandidate } from '@shared/message-types';
+import type { ContentInbound, ContentMessage, RawCandidate } from '@shared/message-types';
 import { detectFromRoot, detectMetadata } from './dom-detector';
 import { detectInShadowDom } from './shadow-dom-detector';
 import { detectFromPerformance } from './performance-detector';
 import { collectPageSignals, installPageSignalProbes } from './page-signal-detector';
 import { observeMediaChanges } from './media-element-observer';
+import { isTopFrame, updateWidget } from './in-page-widget';
 
 installPageSignalProbes();
 
@@ -47,10 +48,12 @@ function scanAndReport(force = false): void {
 scanAndReport(true);
 observeMediaChanges(() => scanAndReport(false));
 
-// Popup "Scan again" triggers a forced re-report.
-chrome.runtime.onMessage.addListener((msg: { type?: string }) => {
+// Messages from the background: rescan, and in-page widget updates.
+chrome.runtime.onMessage.addListener((msg: ContentInbound) => {
   if (msg?.type === 'RESCAN') {
     reported.clear();
     scanAndReport(true);
+  } else if (msg?.type === 'WIDGET_UPDATE' && isTopFrame()) {
+    updateWidget(msg.summary);
   }
 });
