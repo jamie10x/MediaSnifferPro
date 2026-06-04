@@ -7,6 +7,7 @@ import { platform } from 'node:os';
 import { dirname } from 'node:path';
 import { startHost } from './native-messaging/host.js';
 import { cancelJob, getOutputPath, startJob } from './downloader/job-manager.js';
+import { pickFolder } from './system/folder-picker.js';
 
 const VERSION = '0.1.0';
 
@@ -16,7 +17,7 @@ startHost((req, send) => {
       send({ type: 'PONG', requestId: req.requestId, version: VERSION });
       break;
     case 'START_DOWNLOAD':
-      startJob(req.job, send);
+      startJob(req.job, req.requestId, send);
       break;
     case 'CANCEL_DOWNLOAD':
       cancelJob(req.jobId, send);
@@ -29,6 +30,9 @@ startHost((req, send) => {
       if (path) openFolder(dirname(path));
       break;
     }
+    case 'PICK_FOLDER':
+      void pickFolder().then((path) => send({ type: 'FOLDER_PICKED', requestId: req.requestId, path }));
+      break;
   }
 });
 

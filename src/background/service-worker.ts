@@ -34,9 +34,17 @@ import {
 import { installNetworkListener, updateNetworkConfig, type NetworkHit } from './network-listener';
 import { installTabLifecycle } from './tab-lifecycle';
 import { installDownloadEvents, startDownload } from './download-manager';
-import { cancelNativeDownload, getNativeStatus, setProgressHandler } from './native-bridge';
+import {
+  cancelNativeDownload,
+  getNativeStatus,
+  openOutputFolder,
+  pickFolder,
+  setProgressHandler,
+  startNativeDownload,
+} from './native-bridge';
 import { parseManifestForCandidate } from './manifest-handler';
 import { closeOffscreenIfIdle, revokeBlob } from './offscreen-manager';
+import { buildReplayHeaders } from '@shared/replay-headers';
 
 // --- live popup ports ------------------------------------------------------
 const ports = new Map<chrome.runtime.Port, number | null>();
@@ -97,6 +105,7 @@ function cleanCandidateList(candidates: MediaCandidate[]): MediaCandidate[] {
 interface IngestInput {
   tabId: number;
   frameId?: number;
+  frameUrl?: string;
   url: string;
   source: MediaCandidate['source'];
   contentType?: string;
@@ -162,6 +171,7 @@ async function ingest(input: IngestInput): Promise<MediaCandidate | null> {
     pageUrl,
     pageTitle: input.pageTitle ?? '',
     pageDomain,
+    frameUrl: input.frameUrl,
     url: input.url,
     canonicalKey: key,
     source: input.source,
@@ -193,11 +203,17 @@ async function ingest(input: IngestInput): Promise<MediaCandidate | null> {
   return stored;
 }
 
-async function ingestRawList(tabId: number, frameId: number | undefined, raws: RawCandidate[]): Promise<void> {
+async function ingestRawList(
+  tabId: number,
+  frameId: number | undefined,
+  frameUrl: string | undefined,
+  raws: RawCandidate[],
+): Promise<void> {
   for (const raw of raws) {
     await ingest({
       tabId,
       frameId,
+      frameUrl,
       url: raw.url,
       source: raw.source,
       contentType: raw.contentType,
@@ -268,6 +284,14 @@ async function handleUiRequest(req: UiRequest, sender: chrome.runtime.MessageSen
     case 'CANCEL_DOWNLOAD': {
       await cancelNativeDownload(req.jobId);
       return { type: 'OK' };
+    }
+    case 'OPEN_JOB_FOLDER': {
+      openOutputFolder(req.jobId);
+      return { type: 'OK' };
+    }
+    case 'PICK_FOLDER': {
+      const path = await pickFolder();
+      return { type: 'FOLDER_PICKED', path };
     }
     case 'COPY_URL': {
       const candidate = await findCandidateAnyTab(req.candidateId);
@@ -347,9 +371,12 @@ function init(): void {
         return false;
       }
       pageSignals.set(tabId, message.signals);
+      // sender.url is the (possibly cross-origin iframe) frame's URL — the best
+      // Referer for embedded-player segments.
+      const frameUrl = sender.url;
       void (async () => {
         if (sender.tab?.url) await setPageInfo(tabId, sender.tab.url, getDomain(sender.tab.url));
-        await ingestRawList(tabId, sender.frameId, message.candidates);
+        await ingestRawList(tabId, sender.frameId, frameUrl, message.candidates);
       })();
       return false;
     }
@@ -410,8 +437,8 @@ async function applyNativeProgress(
     job.progress.percent = 100;
     job.completedAt = Date.now();
   } else {
-    job.status = 'failed';
     const e = msg.error as { code: string; message: string } | undefined;
+    job.status = e?.code === 'cancelled' ? 'cancelled' : 'failed';
     job.error = { code: e?.code ?? 'native_error', message: e?.message ?? 'failed', recoverable: true };
   }
   await upsertJob(tabId, job);
@@ -451,11 +478,29 @@ async function handleOffscreenEvent(evt: OffscreenEvent): Promise<void> {
       revokeBlob(evt.blobUrl);
     }
   } else {
-    // 'native_required' means a complex/large stream the in-browser engine won't
-    // handle — present it as "needs helper", not a hard failure.
-    if (evt.error.code === 'native_required') {
+    // The in-browser engine couldn't finish (complex stream, or a Referer-checking
+    // CDN returned 403 on segments). If the desktop helper is available, hand the
+    // job off to it automatically — native ffmpeg can replay Referer/UA.
+    const native = await getNativeStatus();
+    const handoffWorthy =
+      evt.error.code === 'native_required' || /\b403\b|segment fetch failed|forbidden/i.test(evt.error.message);
+
+    if (native.installed && handoffWorthy && (await handoffToNative(tabId, job))) {
+      await upsertJob(tabId, job);
+      pushJob(tabId, job);
+      void closeOffscreenIfIdle(await countActiveJobs());
+      return;
+    }
+
+    if (handoffWorthy) {
       job.status = 'blocked';
-      job.error = { code: 'native_required', message: evt.error.message, recoverable: true };
+      job.error = {
+        code: 'native_required',
+        message: native.installed
+          ? evt.error.message
+          : 'Install the desktop helper to download this stream (the CDN blocks in-browser downloads).',
+        recoverable: true,
+      };
     } else {
       job.status = 'failed';
       job.error = { code: evt.error.code, message: evt.error.message, recoverable: true };
@@ -464,6 +509,34 @@ async function handleOffscreenEvent(evt: OffscreenEvent): Promise<void> {
   }
   await upsertJob(tabId, job);
   pushJob(tabId, job);
+}
+
+/** Hand a stuck stream job to the native companion. Returns true if accepted. */
+async function handoffToNative(tabId: number, job: DownloadJob): Promise<boolean> {
+  const candidate = await findCandidateAnyTab(job.candidateId);
+  if (!candidate) return false;
+  job.status = 'downloading';
+  job.type = candidate.mediaType === 'dash' ? 'native_dash' : 'native_hls';
+  job.error = undefined;
+  job.progress = { percent: 0, downloadedBytes: 0, currentStep: 'Desktop helper: starting' };
+
+  const settings = await loadSettings();
+  const res = await startNativeDownload({
+    jobId: job.id,
+    kind: candidate.mediaType === 'dash' ? 'dash' : 'hls',
+    url: candidate.url,
+    outputFilename: job.outputFilename,
+    outputDirectory: settings.downloadFolder || undefined,
+    headers: buildReplayHeaders(candidate),
+  });
+  if (!res.accepted) {
+    job.status = 'failed';
+    job.error = { code: 'native_rejected', message: res.error ?? 'helper rejected job', recoverable: true };
+    await upsertJob(tabId, job);
+    pushJob(tabId, job);
+    return false;
+  }
+  return true;
 }
 
 // Revoke the blob URL and free the offscreen document once the save completes.

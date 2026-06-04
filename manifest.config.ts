@@ -10,6 +10,10 @@ export default defineManifest({
   version: pkg.version,
   description: 'Detect and download media files available on the current page.',
   minimum_chrome_version: '116',
+  // Pins a stable extension ID (pjfhilpldfmeaibbhbcfnnkhcdbkbfnf) across dev/prod
+  // loads and reloads, so the native-messaging host registration always matches.
+  // This is the PUBLIC key; the private key lives in .keys/ (gitignored).
+  key: 'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAy3q60sOijXJhdXeR1XCui5jLg7l9VW6ZDMsQWf0nkd6E9ROlce7gGBfFjx0IjLkqkVZfo/obsamH+S9eA4AyhWo1MrGXjhCGS30169pZyuRhl/WnfHvqZemnUcqnnMYRrhYnRebpE/3m3Ll7fepQZH3A6YnJB+VXTEGcJ6POkj6YBElweLJ+d9gQ+xbzHrb/cUZbxLFvwUGrgPfid34/JqCO+R0DV86T+Fs7I2Ska/EX329xuJylwvMdx6jl4ZslpnrHXDt4khizzTRvajlq7Jb76uE5ltu2AAIZmu5aoqChQXZs60t5qXxDhXhtf8EFHtEA/qKx3TTDIjpOL59sNQIDAQAB',
   permissions: [
     'downloads',
     'storage',

@@ -9,13 +9,13 @@
   <body>
     <header class="header">
       <div class="brand">
-        <span class="logo">▶</span>
+        <span class="logo" id="logo"></span>
         <div>
           <div class="title">MediaSniffer Pro</div>
-          <div id="domain" class="domain">—</div>
+          <div class="domain"><span class="status-dot" id="status-dot"></span><span id="domain">—</span></div>
         </div>
       </div>
-      <button id="rescan" class="ghost-btn" title="Scan again">⟳</button>
+      <button id="rescan" class="ghost-btn" title="Scan again"></button>
     </header>
 
     <div id="native-status" class="native-status hidden"></div>
@@ -26,7 +26,7 @@
 
     <footer class="footer">
       <span id="count" class="count">0 items</span>
-      <button id="open-options" class="link-btn">Settings</button>
+      <button id="open-options" class="link-btn"><span id="settings-icon"></span>Settings</button>
     </footer>
 
     <div id="modal-root"></div>

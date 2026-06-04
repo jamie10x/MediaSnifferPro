@@ -113,3 +113,23 @@ export async function cancelNativeDownload(jobId: string): Promise<void> {
     logger.debug('cancelNativeDownload failed', err);
   }
 }
+
+export function openOutputFolder(jobId: string): void {
+  // Fire-and-forget; the host opens the OS file manager, no response expected.
+  try {
+    const p = connect();
+    p?.postMessage({ type: 'OPEN_OUTPUT_FOLDER', requestId: crypto.randomUUID(), jobId });
+  } catch (err) {
+    logger.debug('openOutputFolder failed', err);
+  }
+}
+
+export async function pickFolder(): Promise<string | null> {
+  try {
+    const res = await send({ type: 'PICK_FOLDER', requestId: crypto.randomUUID() }, 120_000);
+    return res.type === 'FOLDER_PICKED' ? res.path : null;
+  } catch (err) {
+    logger.debug('pickFolder failed', err);
+    return null;
+  }
+}

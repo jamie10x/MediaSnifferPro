@@ -10,6 +10,7 @@ import { loadSettings } from '@shared/settings';
 import { getNativeStatus, startNativeDownload } from './native-bridge';
 import { getJob, upsertJob } from './candidate-store';
 import { startStreamJob } from './offscreen-manager';
+import { buildReplayHeaders } from '@shared/replay-headers';
 import { logger } from '@shared/logger';
 
 function newJob(candidate: MediaCandidate, partial: Partial<DownloadJob>): DownloadJob {
@@ -172,12 +173,15 @@ async function startNativeStreamDownload(
   await upsertJob(candidate.tabId, job);
   onJobUpdate(job);
 
+  const dlSettings = await loadSettings();
   const result = await startNativeDownload({
     jobId: job.id,
     kind,
     url: candidate.url,
     outputFilename: filename,
+    outputDirectory: dlSettings.downloadFolder || undefined,
     variantId,
+    headers: buildReplayHeaders(candidate),
   });
   if (!result.accepted) {
     job.status = 'failed';

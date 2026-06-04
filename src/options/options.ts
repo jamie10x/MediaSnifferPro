@@ -75,6 +75,16 @@ async function main(): Promise<void> {
   let settings = await loadSettings();
   fill(settings);
 
+  document.getElementById('pick-folder')!.addEventListener('click', async () => {
+    const res = (await chrome.runtime.sendMessage({ type: 'PICK_FOLDER' })) as
+      | { type: 'FOLDER_PICKED'; path: string | null }
+      | { type: 'ERROR' };
+    if (res?.type === 'FOLDER_PICKED' && res.path) {
+      const input = document.querySelector<HTMLInputElement>('[data-key="downloadFolder"]')!;
+      input.value = res.path;
+    }
+  });
+
   document.getElementById('save')!.addEventListener('click', async () => {
     settings = collect(settings);
     await saveSettings(settings);

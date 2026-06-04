@@ -43,6 +43,8 @@ export type UiRequest =
   | { type: 'RESCAN'; tabId: number }
   | { type: 'START_DOWNLOAD'; candidateId: string; variantId?: string }
   | { type: 'CANCEL_DOWNLOAD'; jobId: string }
+  | { type: 'OPEN_JOB_FOLDER'; jobId: string }
+  | { type: 'PICK_FOLDER' }
   | { type: 'COPY_URL'; candidateId: string }
   | { type: 'PARSE_MANIFEST'; candidateId: string }
   | { type: 'GET_NATIVE_STATUS' };
@@ -65,6 +67,7 @@ export type UiResponse =
   | { type: 'STATE'; state: TabState; native: NativeStatus }
   | { type: 'OK' }
   | { type: 'COPIED'; url: string }
+  | { type: 'FOLDER_PICKED'; path: string | null }
   | { type: 'NATIVE_STATUS'; native: NativeStatus }
   | { type: 'ERROR'; message: string };
 
@@ -97,14 +100,16 @@ export type NativeRequest =
   | { type: 'START_DOWNLOAD'; requestId: string; job: DownloadJobRequest }
   | { type: 'CANCEL_DOWNLOAD'; requestId: string; jobId: string }
   | { type: 'GET_JOB_STATUS'; requestId: string; jobId: string }
-  | { type: 'OPEN_OUTPUT_FOLDER'; requestId: string; jobId: string };
+  | { type: 'OPEN_OUTPUT_FOLDER'; requestId: string; jobId: string }
+  | { type: 'PICK_FOLDER'; requestId: string };
 
 export type NativeResponse =
   | { type: 'PONG'; requestId: string; version: string }
   | { type: 'JOB_ACCEPTED'; requestId: string; jobId: string }
   | { type: 'JOB_PROGRESS'; jobId: string; progress: DownloadJob['progress'] }
   | { type: 'JOB_COMPLETED'; jobId: string; outputPath: string }
-  | { type: 'JOB_FAILED'; jobId: string; error: { code: string; message: string } };
+  | { type: 'JOB_FAILED'; jobId: string; error: { code: string; message: string } }
+  | { type: 'FOLDER_PICKED'; requestId: string; path: string | null };
 
 // ---------------------------------------------------------------------------
 // background <-> offscreen document (in-browser HLS download engine)

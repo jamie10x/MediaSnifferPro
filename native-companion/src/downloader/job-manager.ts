@@ -1,9 +1,10 @@
 // Tracks active jobs and bridges download requests to ffmpeg, emitting native
 // responses (accepted / progress / completed / failed).
 
-import { runFfmpeg } from './ffmpeg-runner';
-import { assertNotProtected, resolveOutputPath, sanitizeFilename } from '../security/sanitizer';
-import type { DownloadJobRequest, NativeResponse } from '../native-messaging/protocol';
+import { rmSync } from 'node:fs';
+import { runFfmpeg } from './ffmpeg-runner.js';
+import { assertNotProtected, resolveOutputPath, sanitizeFilename } from '../security/sanitizer.js';
+import type { DownloadJobRequest, NativeResponse } from '../native-messaging/protocol.js';
 
 interface ActiveJob {
   cancel: () => void;
@@ -11,8 +12,10 @@ interface ActiveJob {
 }
 
 const jobs = new Map<string, ActiveJob>();
+// Output paths are kept after completion so OPEN_OUTPUT_FOLDER still works.
+const outputPaths = new Map<string, string>();
 
-export function startJob(req: DownloadJobRequest, send: (res: NativeResponse) => void): void {
+export function startJob(req: DownloadJobRequest, requestId: string, send: (res: NativeResponse) => void): void {
   try {
     assertNotProtected(req.url);
   } catch (err) {
@@ -29,15 +32,27 @@ export function startJob(req: DownloadJobRequest, send: (res: NativeResponse) =>
     return;
   }
 
-  send({ type: 'JOB_ACCEPTED', requestId: req.jobId, jobId: req.jobId });
+  // Echo the original request's requestId so the extension's pending call resolves.
+  send({ type: 'JOB_ACCEPTED', requestId, jobId: req.jobId });
 
   const handle = runFfmpeg(
     { url: req.url, outputPath, headers: req.headers },
     {
-      onProgress: (percent, currentStep) =>
-        send({ type: 'JOB_PROGRESS', jobId: req.jobId, progress: { percent, downloadedBytes: 0, currentStep } }),
+      onProgress: (p) =>
+        send({
+          type: 'JOB_PROGRESS',
+          jobId: req.jobId,
+          progress: {
+            percent: p.percent,
+            downloadedBytes: p.downloadedBytes,
+            speedBytesPerSecond: p.speedBytesPerSecond,
+            etaSeconds: p.etaSeconds,
+            currentStep: p.currentStep,
+          },
+        }),
       onDone: (path) => {
         jobs.delete(req.jobId);
+        outputPaths.set(req.jobId, path);
         send({ type: 'JOB_COMPLETED', jobId: req.jobId, outputPath: path });
       },
       onError: (code, message) => {
@@ -48,6 +63,7 @@ export function startJob(req: DownloadJobRequest, send: (res: NativeResponse) =>
   );
 
   jobs.set(req.jobId, { cancel: handle.cancel, outputPath });
+  outputPaths.set(req.jobId, outputPath);
 }
 
 export function cancelJob(jobId: string, send: (res: NativeResponse) => void): void {
@@ -55,12 +71,18 @@ export function cancelJob(jobId: string, send: (res: NativeResponse) => void): v
   if (job) {
     job.cancel();
     jobs.delete(jobId);
+    // Remove the partial (unfinalized) output file.
+    try {
+      rmSync(job.outputPath, { force: true });
+    } catch {
+      /* ignore */
+    }
     send({ type: 'JOB_FAILED', jobId, error: { code: 'cancelled', message: 'Cancelled by user' } });
   }
 }
 
 export function getOutputPath(jobId: string): string | undefined {
-  return jobs.get(jobId)?.outputPath;
+  return jobs.get(jobId)?.outputPath ?? outputPaths.get(jobId);
 }
 
 function ensureMp4(name: string): string {

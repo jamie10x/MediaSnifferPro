@@ -48,6 +48,9 @@ export interface MediaCandidate {
   pageUrl: string;
   pageTitle: string;
   pageDomain: string;
+  /** URL of the (possibly cross-origin) frame that hosts the media — used as a
+   * Referer fallback for the native downloader when no header was captured. */
+  frameUrl?: string;
 
   url: string;
   finalUrl?: string;

@@ -1,7 +1,7 @@
 // Native messaging host: reads length-prefixed requests from stdin, dispatches,
 // and writes responses to stdout. Validates every message; ignores unknowns.
 
-import { MessageDecoder, encodeMessage, type NativeRequest, type NativeResponse } from './protocol';
+import { MessageDecoder, encodeMessage, type NativeRequest, type NativeResponse } from './protocol.js';
 
 export type RequestHandler = (req: NativeRequest, send: (res: NativeResponse) => void) => void;
 

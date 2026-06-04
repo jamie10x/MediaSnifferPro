@@ -49,8 +49,11 @@ function main(): void {
   const mainJs = join(distDir, 'main.js');
 
   // Chrome runs an executable, not a .js — write a launcher and point at it.
+  // Embed the ABSOLUTE node path: browsers launch native hosts with a minimal
+  // PATH, so `node` is often not resolvable otherwise.
+  const nodeBin = process.execPath;
   const launcher = join(distDir, 'run.sh');
-  writeFileSync(launcher, `#!/usr/bin/env bash\nexec "$(command -v node)" "${mainJs}" "$@"\n`, 'utf8');
+  writeFileSync(launcher, `#!/usr/bin/env bash\nexec "${nodeBin}" "${mainJs}" "$@"\n`, 'utf8');
   chmodSync(launcher, 0o755);
 
   const manifest = {

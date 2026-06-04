@@ -19,7 +19,8 @@ export type NativeRequest =
   | { type: 'START_DOWNLOAD'; requestId: string; job: DownloadJobRequest }
   | { type: 'CANCEL_DOWNLOAD'; requestId: string; jobId: string }
   | { type: 'GET_JOB_STATUS'; requestId: string; jobId: string }
-  | { type: 'OPEN_OUTPUT_FOLDER'; requestId: string; jobId: string };
+  | { type: 'OPEN_OUTPUT_FOLDER'; requestId: string; jobId: string }
+  | { type: 'PICK_FOLDER'; requestId: string };
 
 export interface JobProgress {
   percent: number;
@@ -35,7 +36,8 @@ export type NativeResponse =
   | { type: 'JOB_ACCEPTED'; requestId: string; jobId: string }
   | { type: 'JOB_PROGRESS'; jobId: string; progress: JobProgress }
   | { type: 'JOB_COMPLETED'; jobId: string; outputPath: string }
-  | { type: 'JOB_FAILED'; jobId: string; error: { code: string; message: string } };
+  | { type: 'JOB_FAILED'; jobId: string; error: { code: string; message: string } }
+  | { type: 'FOLDER_PICKED'; requestId: string; path: string | null };
 
 /** Encode a message into a length-prefixed Buffer for stdout. */
 export function encodeMessage(message: NativeResponse): Buffer {

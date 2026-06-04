@@ -1,15 +1,22 @@
 import type { MediaCandidate } from '@shared/types';
 import { PROTECTED_MEDIA_MESSAGE } from '@shared/constants';
 import { VariantPicker } from './VariantPicker';
+import { icons, iconEl } from './icons';
 
 const STATUS_LABEL: Record<MediaCandidate['supportStatus'], string> = {
-  downloadable: 'Downloadable',
+  downloadable: 'Ready to download',
   needs_native_companion: 'Needs desktop helper',
   copy_only: 'Copy URL only',
   unsupported: 'Unsupported',
-  protected_likely: 'Protected stream likely',
-  blocked_by_policy: 'Blocked by your policy',
+  protected_likely: 'Protected',
+  blocked_by_policy: 'Blocked by policy',
 };
+
+function iconFor(type: MediaCandidate['mediaType']): keyof typeof icons {
+  if (type === 'audio') return 'audio';
+  if (type === 'hls' || type === 'dash') return 'film';
+  return 'video';
+}
 
 function humanBytes(n?: number): string {
   if (!n || n <= 0) return '';
@@ -20,7 +27,14 @@ function humanBytes(n?: number): string {
     v /= 1024;
     i++;
   }
-  return `${v.toFixed(1)} ${units[i]}`;
+  return `${v.toFixed(v >= 100 || i === 0 ? 0 : 1)} ${units[i]}`;
+}
+
+function chip(text: string, cls = ''): HTMLElement {
+  const el = document.createElement('span');
+  el.className = `chip ${cls}`.trim();
+  el.textContent = text;
+  return el;
 }
 
 export interface MediaItemProps {
@@ -33,50 +47,52 @@ export interface MediaItemProps {
 
 export function MediaItem(props: MediaItemProps): HTMLElement {
   const c = props.candidate;
-  const item = document.createElement('div');
-  item.className = 'media-item';
-
-  // Title row.
-  const row = document.createElement('div');
-  row.className = 'row';
-  const badge = document.createElement('span');
-  badge.className = `badge ${c.mediaType}`;
-  badge.textContent = c.mediaType;
-  const name = document.createElement('span');
-  name.className = 'media-name';
-  name.textContent = c.filename || c.url;
-  name.title = c.url;
-  row.append(badge, name);
-  item.appendChild(row);
-
-  // Meta line.
-  const meta = document.createElement('div');
-  meta.className = 'meta';
-  const bits: string[] = [`Source: ${c.source}`];
-  if (c.qualityLabel) bits.push(c.qualityLabel);
-  else if (c.height) bits.push(`${c.height}p`);
-  if (c.fileSizeBytes) bits.push(humanBytes(c.fileSizeBytes));
-  if (c.contentType) bits.push(c.contentType);
-  meta.textContent = bits.join(' · ');
-  item.appendChild(meta);
-
-  // Status.
-  const status = document.createElement('div');
-  status.className = `status ${c.supportStatus}`;
-  status.textContent = STATUS_LABEL[c.supportStatus];
-  item.appendChild(status);
-
   const isProtected = c.supportStatus === 'protected_likely';
   const isStream = c.mediaType === 'hls' || c.mediaType === 'dash';
+
+  const item = document.createElement('div');
+  item.className = `media-item${isProtected ? ' protected' : ''}`;
+
+  // Head: icon + name + type.
+  const head = document.createElement('div');
+  head.className = 'mi-head';
+  const ic = document.createElement('span');
+  ic.className = `mi-icon ${c.mediaType}`;
+  ic.innerHTML = icons[iconFor(c.mediaType)];
+  const headtext = document.createElement('div');
+  headtext.className = 'mi-headtext';
+  const typeEl = document.createElement('div');
+  typeEl.className = `mi-type ${c.mediaType}`;
+  typeEl.textContent = c.mediaType.toUpperCase();
+  const name = document.createElement('div');
+  name.className = 'mi-name';
+  name.textContent = c.filename || c.url;
+  name.title = c.url;
+  headtext.append(typeEl, name);
+  head.append(ic, headtext);
+  item.appendChild(head);
+
+  // Chips: status + metadata.
+  const chips = document.createElement('div');
+  chips.className = 'chips';
+  chips.appendChild(chip(STATUS_LABEL[c.supportStatus], `status ${c.supportStatus}`));
+  if (c.qualityLabel) chips.appendChild(chip(c.qualityLabel));
+  else if (c.height) chips.appendChild(chip(`${c.height}p`));
+  if (c.fileSizeBytes) chips.appendChild(chip(humanBytes(c.fileSizeBytes)));
+  if (c.durationSeconds) chips.appendChild(chip(formatDuration(c.durationSeconds)));
+  chips.appendChild(chip(c.source));
+  item.appendChild(chips);
 
   if (isProtected) {
     const note = document.createElement('div');
     note.className = 'protected-note';
-    note.textContent = c.unsupportedReason ? `${c.unsupportedReason} ${PROTECTED_MEDIA_MESSAGE}` : PROTECTED_MEDIA_MESSAGE;
+    note.appendChild(iconEl('lock'));
+    const txt = document.createElement('span');
+    txt.textContent = c.unsupportedReason ? `${c.unsupportedReason} ${PROTECTED_MEDIA_MESSAGE}` : PROTECTED_MEDIA_MESSAGE;
+    note.appendChild(txt);
     item.appendChild(note);
   }
 
-  // Stream variants (after parsing).
   if (isStream && c.variants && c.variants.length > 0 && !isProtected) {
     item.appendChild(
       VariantPicker({ variants: c.variants, onSelect: (variantId) => props.onDownload(c.id, variantId) }),
@@ -88,33 +104,36 @@ export function MediaItem(props: MediaItemProps): HTMLElement {
   actions.className = 'actions';
 
   if (c.supportStatus === 'downloadable') {
-    const dl = document.createElement('button');
-    dl.className = 'primary';
-    dl.textContent = 'Download';
-    dl.addEventListener('click', () => props.onDownload(c.id));
-    actions.appendChild(dl);
+    actions.appendChild(button('primary', 'download', 'Download', () => props.onDownload(c.id)));
   }
-
   if (isStream && !isProtected) {
-    const parse = document.createElement('button');
-    parse.className = 'primary';
-    parse.textContent = c.variants && c.variants.length ? 'Refresh variants' : 'Choose quality';
-    parse.addEventListener('click', () => props.onParse(c.id));
-    actions.appendChild(parse);
+    const label = c.variants && c.variants.length ? 'Refresh' : 'Quality';
+    actions.appendChild(button('secondary', 'refresh', label, () => props.onParse(c.id)));
   }
-
-  const copy = document.createElement('button');
-  copy.className = 'secondary';
-  copy.textContent = 'Copy URL';
-  copy.addEventListener('click', () => props.onCopy(c.id));
-  actions.appendChild(copy);
-
-  const details = document.createElement('button');
-  details.className = 'secondary';
-  details.textContent = 'Details';
-  details.addEventListener('click', () => props.onDetails(c));
-  actions.appendChild(details);
+  actions.appendChild(button('secondary', 'copy', 'Copy', () => props.onCopy(c.id)));
+  actions.appendChild(button('secondary', 'info', 'Details', () => props.onDetails(c)));
 
   item.appendChild(actions);
   return item;
+}
+
+function button(cls: string, icon: keyof typeof icons, label: string, onClick: () => void): HTMLButtonElement {
+  const b = document.createElement('button');
+  b.className = cls;
+  const wrap = document.createElement('span');
+  wrap.className = 'icon';
+  wrap.innerHTML = icons[icon];
+  const span = document.createElement('span');
+  span.textContent = label;
+  b.append(wrap, span);
+  b.addEventListener('click', onClick);
+  return b;
+}
+
+function formatDuration(seconds: number): string {
+  const s = Math.round(seconds);
+  const m = Math.floor(s / 60);
+  const h = Math.floor(m / 60);
+  if (h > 0) return `${h}h ${m % 60}m`;
+  return `${m}:${String(s % 60).padStart(2, '0')}`;
 }

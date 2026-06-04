@@ -8,7 +8,13 @@
   </head>
   <body>
     <div class="container">
-      <h1>MediaSniffer Pro — Settings</h1>
+      <div class="page-head">
+        <div class="page-logo">▶</div>
+        <div>
+          <h1>MediaSniffer Pro</h1>
+          <p class="page-sub">Settings &amp; preferences</p>
+        </div>
+      </div>
 
       <section>
         <h2>Detection</h2>
@@ -63,6 +69,14 @@
           Concurrent segment downloads
           <input type="number" min="1" max="12" data-key="streamConcurrency" />
         </label>
+        <label class="field">
+          Desktop-helper download folder
+          <div class="folder-row">
+            <input type="text" data-key="downloadFolder" placeholder="~/Downloads/MediaSnifferPro (default)" />
+            <button type="button" id="pick-folder" class="secondary-btn">Choose…</button>
+          </div>
+        </label>
+        <p class="hint">Where the desktop helper saves files. Browser (in-page) downloads always go to your browser's Downloads folder.</p>
         <p class="hint">
           Simple clear HLS (MPEG-TS) streams are downloaded and remuxed to MP4 in your
           browser via mux.js. Complex streams (fMP4, DASH, large or long downloads) are

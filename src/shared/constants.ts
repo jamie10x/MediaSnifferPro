@@ -128,6 +128,8 @@ export interface Settings {
   nativeHelperEnabled: boolean;
   /** Concurrent segment downloads for in-browser stream downloading. */
   streamConcurrency: number;
+  /** Output folder for desktop-helper downloads (empty = ~/Downloads/MediaSnifferPro). */
+  downloadFolder: string;
   privacyMode: boolean;
   debugLogs: boolean;
   allowlist: string[];
@@ -150,6 +152,7 @@ export const DEFAULT_SETTINGS: Settings = {
   filenameTemplate: '{title}.{ext}',
   nativeHelperEnabled: false,
   streamConcurrency: 6,
+  downloadFolder: '',
   privacyMode: true,
   debugLogs: false,
   allowlist: [],
