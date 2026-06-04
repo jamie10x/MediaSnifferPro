@@ -95,6 +95,12 @@ export async function getJob(tabId: number, jobId: string): Promise<DownloadJob 
   return bucket.jobs[jobId];
 }
 
+export async function removeJob(tabId: number, jobId: string): Promise<void> {
+  const bucket = await getBucket(tabId);
+  delete bucket.jobs[jobId];
+  await persist(tabId);
+}
+
 export function findJobByBrowserDownloadId(
   browserDownloadId: number,
 ): { tabId: number; jobId: string } | null {

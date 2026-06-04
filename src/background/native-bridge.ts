@@ -12,7 +12,8 @@ import type {
   NativeStatus,
 } from '@shared/message-types';
 
-type ProgressHandler = (msg: Extract<NativeResponse, { type: 'JOB_PROGRESS' | 'JOB_COMPLETED' | 'JOB_FAILED' }>) => void;
+type PushTypes = 'JOB_PROGRESS' | 'JOB_COMPLETED' | 'JOB_FAILED' | 'JOB_PAUSED' | 'JOB_QUEUED';
+type ProgressHandler = (msg: Extract<NativeResponse, { type: PushTypes }>) => void;
 
 let port: chrome.runtime.Port | null = null;
 const pending = new Map<string, (res: NativeResponse) => void>();
@@ -31,7 +32,13 @@ function connect(): chrome.runtime.Port | null {
     if ('requestId' in msg && pending.has(msg.requestId)) {
       pending.get(msg.requestId)!(msg);
       pending.delete(msg.requestId);
-    } else if (msg.type === 'JOB_PROGRESS' || msg.type === 'JOB_COMPLETED' || msg.type === 'JOB_FAILED') {
+    } else if (
+      msg.type === 'JOB_PROGRESS' ||
+      msg.type === 'JOB_COMPLETED' ||
+      msg.type === 'JOB_FAILED' ||
+      msg.type === 'JOB_PAUSED' ||
+      msg.type === 'JOB_QUEUED'
+    ) {
       progressHandler?.(msg);
     }
   });
@@ -111,6 +118,22 @@ export async function cancelNativeDownload(jobId: string): Promise<void> {
     await send({ type: 'CANCEL_DOWNLOAD', requestId: crypto.randomUUID(), jobId });
   } catch (err) {
     logger.debug('cancelNativeDownload failed', err);
+  }
+}
+
+export function pauseNativeDownload(jobId: string): void {
+  try {
+    connect()?.postMessage({ type: 'PAUSE_DOWNLOAD', requestId: crypto.randomUUID(), jobId });
+  } catch (err) {
+    logger.debug('pauseNativeDownload failed', err);
+  }
+}
+
+export function resumeNativeDownload(jobId: string): void {
+  try {
+    connect()?.postMessage({ type: 'RESUME_DOWNLOAD', requestId: crypto.randomUUID(), jobId });
+  } catch (err) {
+    logger.debug('resumeNativeDownload failed', err);
   }
 }
 

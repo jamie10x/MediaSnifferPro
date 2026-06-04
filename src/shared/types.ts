@@ -154,6 +154,7 @@ export type DownloadJobStatus =
   | 'queued'
   | 'preparing'
   | 'downloading'
+  | 'paused'
   | 'remuxing'
   | 'completed'
   | 'failed'
@@ -178,10 +179,15 @@ export interface DownloadJob {
     speedBytesPerSecond?: number;
     etaSeconds?: number;
     currentStep?: string;
+    segmentsDone?: number;
+    segmentsTotal?: number;
   };
 
   /** Set on browser_direct jobs so we can map chrome.downloads events back. */
   browserDownloadId?: number;
+
+  /** The chosen stream variant (explicit or auto-selected by quality preference). */
+  variantId?: string;
 
   error?: {
     code: string;

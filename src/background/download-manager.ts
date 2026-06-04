@@ -11,6 +11,7 @@ import { getNativeStatus, startNativeDownload } from './native-bridge';
 import { getJob, upsertJob } from './candidate-store';
 import { startStreamJob } from './offscreen-manager';
 import { buildReplayHeaders } from '@shared/replay-headers';
+import { pickVariantId, resolveDownloadUrl } from '@shared/quality';
 import { logger } from '@shared/logger';
 
 function newJob(candidate: MediaCandidate, partial: Partial<DownloadJob>): DownloadJob {
@@ -52,26 +53,19 @@ export async function startDownload(
     return job;
   }
 
+  // Auto-select a variant by quality preference when the user didn't pick one.
+  const effectiveVariantId = variantId ?? pickVariantId(candidate, settings.preferredQuality);
+
   if (candidate.mediaType === 'hls') {
-    return startHlsDownload(candidate, variantId, filename, onJobUpdate);
+    return startHlsDownload(candidate, effectiveVariantId, filename, onJobUpdate);
   }
 
   if (candidate.mediaType === 'dash') {
     // DASH remux is deferred to the native helper this round.
-    return startNativeStreamDownload(candidate, variantId, filename, onJobUpdate);
+    return startNativeStreamDownload(candidate, effectiveVariantId, filename, onJobUpdate);
   }
 
   return startBrowserDownload(candidate, filename, onJobUpdate);
-}
-
-function resolvePlaylistUrl(candidate: MediaCandidate, variantId?: string): string {
-  if (variantId && candidate.variants) {
-    const v = candidate.variants.find((x) => x.id === variantId);
-    if (v?.playlistUrl) return v.playlistUrl;
-  }
-  // No explicit variant: the offscreen downloader resolves master -> best variant,
-  // so passing the manifest URL itself is sufficient.
-  return candidate.url;
 }
 
 /** Clear HLS: download + remux in-browser via the offscreen document. */
@@ -85,6 +79,7 @@ async function startHlsDownload(
   const job = newJob(candidate, {
     type: 'native_hls',
     status: 'preparing',
+    variantId,
     outputFilename: filename.endsWith('.mp4') ? filename : `${stripExt(filename)}.mp4`,
   });
   await upsertJob(candidate.tabId, job);
@@ -92,7 +87,7 @@ async function startHlsDownload(
 
   const streamJob: StreamDownloadJob = {
     jobId: job.id,
-    playlistUrl: resolvePlaylistUrl(candidate, variantId),
+    playlistUrl: resolveDownloadUrl(candidate, variantId),
     outputBasename: stripExt(job.outputFilename),
     concurrency: Math.max(1, Math.min(12, settings.streamConcurrency)),
   };

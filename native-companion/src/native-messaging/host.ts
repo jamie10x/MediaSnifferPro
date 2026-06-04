@@ -47,7 +47,10 @@ function isValidRequest(req: unknown): req is NativeRequest {
     type === 'PING' ||
     type === 'START_DOWNLOAD' ||
     type === 'CANCEL_DOWNLOAD' ||
+    type === 'PAUSE_DOWNLOAD' ||
+    type === 'RESUME_DOWNLOAD' ||
     type === 'GET_JOB_STATUS' ||
-    type === 'OPEN_OUTPUT_FOLDER'
+    type === 'OPEN_OUTPUT_FOLDER' ||
+    type === 'PICK_FOLDER'
   );
 }

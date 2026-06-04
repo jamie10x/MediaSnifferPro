@@ -49,7 +49,11 @@ function buildArgs(job: FfmpegJob): string[] {
   if (job.headers?.referer) headerLines.push(`Referer: ${job.headers.referer}`);
   if (job.headers?.origin) headerLines.push(`Origin: ${job.headers.origin}`);
   if (headerLines.length) args.push('-headers', headerLines.join('\r\n') + '\r\n');
-  if (job.headers?.userAgent) args.push('-user_agent', job.headers.userAgent);
+  // A realistic UA avoids CDN throttling of non-browser clients.
+  const ua =
+    job.headers?.userAgent ||
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+  args.push('-user_agent', ua);
 
   args.push(
     '-i', job.url,

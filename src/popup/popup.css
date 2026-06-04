@@ -160,6 +160,69 @@ body {
   color: var(--warn);
 }
 
+/* ---------- Tabs ---------- */
+.tabs {
+  display: flex;
+  gap: 4px;
+  padding: 8px 14px 0;
+}
+.tab {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 8px 0;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.tab:hover { color: var(--text); }
+.tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+/* ---------- History ---------- */
+.history-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: -2px;
+}
+.history-item {
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  border-radius: 12px;
+  padding: 12px;
+}
+.hi-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.hi-badge {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  flex: none;
+  background: var(--surface-3);
+}
+.hi-badge .icon svg { width: 14px; height: 14px; }
+.hi-badge.completed { background: rgba(52, 211, 153, 0.16); color: var(--ok); }
+.hi-badge.failed { background: rgba(245, 87, 108, 0.16); color: var(--danger); }
+.hi-badge.cancelled { background: var(--surface-3); color: var(--faint); }
+.hi-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
 /* ---------- Jobs ---------- */
 .jobs:empty {
   display: none;
@@ -266,6 +329,16 @@ body {
 .job-status-completed { color: var(--ok); }
 .job-status-blocked { color: var(--warn); }
 .job-status-cancelled { color: var(--faint); }
+.job-status-paused { color: var(--warn); }
+.job-status-queued { color: var(--muted); }
+
+.progress-bar.paused {
+  background: var(--warn);
+  animation: none;
+}
+.progress-bar.paused::after {
+  display: none;
+}
 
 .job-actions {
   margin-top: 11px;
@@ -332,6 +405,67 @@ body {
 .media-item.protected {
   border-color: rgba(245, 87, 108, 0.35);
   background: linear-gradient(180deg, rgba(245, 87, 108, 0.06), var(--surface));
+}
+.media-item.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+/* ---------- Batch toolbar ---------- */
+.batch-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  padding: 8px 10px 8px 12px;
+}
+.batch-select-all {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+}
+.mi-check,
+.batch-select-all input {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  border: 1.5px solid var(--border);
+  background: var(--surface);
+  cursor: pointer;
+  position: relative;
+  flex: none;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.mi-check:checked,
+.batch-select-all input:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.mi-check:checked::after,
+.batch-select-all input:checked::after {
+  content: '';
+  position: absolute;
+  left: 5px;
+  top: 1px;
+  width: 5px;
+  height: 10px;
+  border: solid #04211d;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+.batch-bar .primary {
+  padding: 7px 13px;
+  font-size: 12px;
 }
 
 .mi-head {

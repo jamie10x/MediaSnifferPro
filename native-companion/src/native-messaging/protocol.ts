@@ -18,6 +18,8 @@ export type NativeRequest =
   | { type: 'PING'; requestId: string }
   | { type: 'START_DOWNLOAD'; requestId: string; job: DownloadJobRequest }
   | { type: 'CANCEL_DOWNLOAD'; requestId: string; jobId: string }
+  | { type: 'PAUSE_DOWNLOAD'; requestId: string; jobId: string }
+  | { type: 'RESUME_DOWNLOAD'; requestId: string; jobId: string }
   | { type: 'GET_JOB_STATUS'; requestId: string; jobId: string }
   | { type: 'OPEN_OUTPUT_FOLDER'; requestId: string; jobId: string }
   | { type: 'PICK_FOLDER'; requestId: string };
@@ -29,12 +31,20 @@ export interface JobProgress {
   speedBytesPerSecond?: number;
   etaSeconds?: number;
   currentStep?: string;
+  segmentsDone?: number;
+  segmentsTotal?: number;
 }
+
+export type NativeRequestExtra =
+  | { type: 'PAUSE_DOWNLOAD'; requestId: string; jobId: string }
+  | { type: 'RESUME_DOWNLOAD'; requestId: string; jobId: string };
 
 export type NativeResponse =
   | { type: 'PONG'; requestId: string; version: string }
   | { type: 'JOB_ACCEPTED'; requestId: string; jobId: string }
+  | { type: 'JOB_QUEUED'; jobId: string; position: number }
   | { type: 'JOB_PROGRESS'; jobId: string; progress: JobProgress }
+  | { type: 'JOB_PAUSED'; jobId: string }
   | { type: 'JOB_COMPLETED'; jobId: string; outputPath: string }
   | { type: 'JOB_FAILED'; jobId: string; error: { code: string; message: string } }
   | { type: 'FOLDER_PICKED'; requestId: string; path: string | null };

@@ -43,6 +43,9 @@ export interface MediaItemProps {
   onCopy: (candidateId: string) => void;
   onDetails: (candidate: MediaCandidate) => void;
   onParse: (candidateId: string) => void;
+  selectable?: boolean;
+  selected?: boolean;
+  onToggleSelect?: (candidateId: string, checked: boolean) => void;
 }
 
 export function MediaItem(props: MediaItemProps): HTMLElement {
@@ -51,11 +54,19 @@ export function MediaItem(props: MediaItemProps): HTMLElement {
   const isStream = c.mediaType === 'hls' || c.mediaType === 'dash';
 
   const item = document.createElement('div');
-  item.className = `media-item${isProtected ? ' protected' : ''}`;
+  item.className = `media-item${isProtected ? ' protected' : ''}${props.selected ? ' selected' : ''}`;
 
-  // Head: icon + name + type.
+  // Head: optional checkbox + icon + name + type.
   const head = document.createElement('div');
   head.className = 'mi-head';
+  if (props.selectable) {
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.className = 'mi-check';
+    cb.checked = !!props.selected;
+    cb.addEventListener('change', () => props.onToggleSelect?.(c.id, cb.checked));
+    head.appendChild(cb);
+  }
   const ic = document.createElement('span');
   ic.className = `mi-icon ${c.mediaType}`;
   ic.innerHTML = icons[iconFor(c.mediaType)];

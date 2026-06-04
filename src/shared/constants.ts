@@ -130,6 +130,8 @@ export interface Settings {
   streamConcurrency: number;
   /** Output folder for desktop-helper downloads (empty = ~/Downloads/MediaSnifferPro). */
   downloadFolder: string;
+  /** Desktop notifications when a download finishes. */
+  notificationsEnabled: boolean;
   privacyMode: boolean;
   debugLogs: boolean;
   allowlist: string[];
@@ -153,6 +155,7 @@ export const DEFAULT_SETTINGS: Settings = {
   nativeHelperEnabled: false,
   streamConcurrency: 6,
   downloadFolder: '',
+  notificationsEnabled: true,
   privacyMode: true,
   debugLogs: false,
   allowlist: [],

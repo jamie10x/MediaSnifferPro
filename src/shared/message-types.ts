@@ -42,11 +42,20 @@ export type UiRequest =
   | { type: 'GET_STATE'; tabId?: number }
   | { type: 'RESCAN'; tabId: number }
   | { type: 'START_DOWNLOAD'; candidateId: string; variantId?: string }
+  | { type: 'BATCH_DOWNLOAD'; candidateIds: string[] }
   | { type: 'CANCEL_DOWNLOAD'; jobId: string }
+  | { type: 'PAUSE_DOWNLOAD'; jobId: string }
+  | { type: 'RESUME_DOWNLOAD'; jobId: string }
   | { type: 'OPEN_JOB_FOLDER'; jobId: string }
   | { type: 'PICK_FOLDER' }
   | { type: 'COPY_URL'; candidateId: string }
   | { type: 'PARSE_MANIFEST'; candidateId: string }
+  | { type: 'GET_HISTORY' }
+  | { type: 'REMOVE_HISTORY'; id: string }
+  | { type: 'CLEAR_HISTORY' }
+  | { type: 'OPEN_HISTORY_FOLDER'; id: string }
+  | { type: 'REDOWNLOAD'; id: string }
+  | { type: 'DISMISS_JOB'; jobId: string }
   | { type: 'GET_NATIVE_STATUS' };
 
 export interface TabState {
@@ -68,6 +77,7 @@ export type UiResponse =
   | { type: 'OK' }
   | { type: 'COPIED'; url: string }
   | { type: 'FOLDER_PICKED'; path: string | null }
+  | { type: 'HISTORY'; entries: import('./history').HistoryEntry[] }
   | { type: 'NATIVE_STATUS'; native: NativeStatus }
   | { type: 'ERROR'; message: string };
 
@@ -79,6 +89,7 @@ export const POPUP_PORT = 'msp-popup';
 export type PushMessage =
   | { type: 'STATE_UPDATED'; state: TabState }
   | { type: 'JOB_UPDATED'; job: DownloadJob }
+  | { type: 'HISTORY_UPDATED' }
   | { type: 'NATIVE_STATUS'; native: NativeStatus };
 
 // ---------------------------------------------------------------------------
@@ -99,6 +110,8 @@ export type NativeRequest =
   | { type: 'PING'; requestId: string }
   | { type: 'START_DOWNLOAD'; requestId: string; job: DownloadJobRequest }
   | { type: 'CANCEL_DOWNLOAD'; requestId: string; jobId: string }
+  | { type: 'PAUSE_DOWNLOAD'; requestId: string; jobId: string }
+  | { type: 'RESUME_DOWNLOAD'; requestId: string; jobId: string }
   | { type: 'GET_JOB_STATUS'; requestId: string; jobId: string }
   | { type: 'OPEN_OUTPUT_FOLDER'; requestId: string; jobId: string }
   | { type: 'PICK_FOLDER'; requestId: string };
@@ -106,7 +119,9 @@ export type NativeRequest =
 export type NativeResponse =
   | { type: 'PONG'; requestId: string; version: string }
   | { type: 'JOB_ACCEPTED'; requestId: string; jobId: string }
+  | { type: 'JOB_QUEUED'; jobId: string; position: number }
   | { type: 'JOB_PROGRESS'; jobId: string; progress: DownloadJob['progress'] }
+  | { type: 'JOB_PAUSED'; jobId: string }
   | { type: 'JOB_COMPLETED'; jobId: string; outputPath: string }
   | { type: 'JOB_FAILED'; jobId: string; error: { code: string; message: string } }
   | { type: 'FOLDER_PICKED'; requestId: string; path: string | null };

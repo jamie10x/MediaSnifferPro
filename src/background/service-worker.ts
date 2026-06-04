@@ -27,6 +27,7 @@ import {
   getPageInfo,
   listCandidates,
   listJobs,
+  removeJob,
   setPageInfo,
   upsertCandidate,
   upsertJob,
@@ -38,13 +39,19 @@ import {
   cancelNativeDownload,
   getNativeStatus,
   openOutputFolder,
+  pauseNativeDownload,
   pickFolder,
+  resumeNativeDownload,
   setProgressHandler,
   startNativeDownload,
 } from './native-bridge';
 import { parseManifestForCandidate } from './manifest-handler';
 import { closeOffscreenIfIdle, revokeBlob } from './offscreen-manager';
 import { buildReplayHeaders } from '@shared/replay-headers';
+import { isBatchDownloadable, resolveDownloadUrl } from '@shared/quality';
+import { addHistory, clearCompletedHistory, getHistoryEntry, listHistory, removeHistory } from './history-store';
+import { installNotificationClicks, notifyJobDone } from './notifier';
+import type { HistoryEntry, HistoryStatus } from '@shared/history';
 
 // --- live popup ports ------------------------------------------------------
 const ports = new Map<chrome.runtime.Port, number | null>();
@@ -68,6 +75,81 @@ async function pushState(tabId: number): Promise<void> {
 
 function pushJob(tabId: number, job: DownloadJob): void {
   pushToTab(tabId, { type: 'JOB_UPDATED', job });
+}
+
+function pushHistoryUpdated(): void {
+  for (const port of ports.keys()) {
+    try {
+      port.postMessage({ type: 'HISTORY_UPDATED' });
+    } catch {
+      ports.delete(port);
+    }
+  }
+}
+
+// Record a finished job to persistent history + fire a desktop notification.
+const recorded = new Set<string>();
+async function recordTerminal(job: DownloadJob, outputPath?: string): Promise<void> {
+  if (job.status !== 'completed' && job.status !== 'failed' && job.status !== 'cancelled') return;
+  if (recorded.has(job.id)) return;
+  recorded.add(job.id);
+
+  const candidate = await findCandidateAnyTab(job.candidateId);
+  const via = job.type === 'native_hls' || job.type === 'native_dash' ? 'native' : 'browser';
+  const entry: HistoryEntry = {
+    id: crypto.randomUUID(),
+    jobId: job.id,
+    filename: job.outputFilename,
+    pageTitle: candidate?.pageTitle ?? '',
+    pageUrl: candidate?.pageUrl ?? '',
+    domain: candidate?.pageDomain ?? '',
+    mediaType: candidate?.mediaType ?? 'unknown',
+    quality: candidate?.qualityLabel ?? (candidate?.height ? `${candidate.height}p` : undefined),
+    sizeBytes: job.progress.downloadedBytes || candidate?.fileSizeBytes,
+    status: job.status as HistoryStatus,
+    outputPath,
+    via,
+    createdAt: Date.now(),
+    redownload: candidate
+      ? {
+          url: candidate.url,
+          mediaType: candidate.mediaType,
+          pageTitle: candidate.pageTitle,
+          pageUrl: candidate.pageUrl,
+          frameUrl: candidate.frameUrl,
+          replayHeaders: candidate.replayHeaders,
+        }
+      : undefined,
+  };
+  await addHistory(entry);
+  pushHistoryUpdated();
+  void notifyJobDone(job, via === 'native' ? () => openOutputFolder(job.id) : undefined);
+}
+
+function candidateFromRedownload(entry: HistoryEntry, tabId: number): MediaCandidate {
+  const rd = entry.redownload!;
+  const now = Date.now();
+  return {
+    id: crypto.randomUUID(),
+    tabId,
+    pageUrl: rd.pageUrl,
+    pageTitle: rd.pageTitle,
+    pageDomain: getDomain(rd.pageUrl) || entry.domain,
+    frameUrl: rd.frameUrl,
+    url: rd.url,
+    canonicalKey: canonicalKey(rd.url),
+    source: 'manual',
+    mediaType: rd.mediaType,
+    supportStatus: rd.mediaType === 'hls' ? 'downloadable' : 'needs_native_companion',
+    isSegment: false,
+    isBlob: false,
+    isManifest: rd.mediaType === 'hls' || rd.mediaType === 'dash',
+    isEncryptedLikely: false,
+    isDrmLikely: false,
+    replayHeaders: rd.replayHeaders,
+    createdAt: now,
+    updatedAt: now,
+  };
 }
 
 // --- per-tab page signals (EME/MSE/blob) -----------------------------------
@@ -281,8 +363,30 @@ async function handleUiRequest(req: UiRequest, sender: chrome.runtime.MessageSen
       await pushState(candidate.tabId);
       return { type: 'OK' };
     }
+    case 'BATCH_DOWNLOAD': {
+      let tab: number | null = null;
+      const seen = new Set<string>();
+      for (const id of req.candidateIds) {
+        const candidate = await findCandidateAnyTab(id);
+        if (!candidate || !isBatchDownloadable(candidate)) continue;
+        if (seen.has(candidate.canonicalKey)) continue; // de-dupe
+        seen.add(candidate.canonicalKey);
+        tab = candidate.tabId;
+        await startDownload(candidate, undefined, (job) => pushJob(candidate.tabId, job));
+      }
+      if (tab != null) await pushState(tab);
+      return { type: 'OK' };
+    }
     case 'CANCEL_DOWNLOAD': {
       await cancelNativeDownload(req.jobId);
+      return { type: 'OK' };
+    }
+    case 'PAUSE_DOWNLOAD': {
+      pauseNativeDownload(req.jobId);
+      return { type: 'OK' };
+    }
+    case 'RESUME_DOWNLOAD': {
+      resumeNativeDownload(req.jobId);
       return { type: 'OK' };
     }
     case 'OPEN_JOB_FOLDER': {
@@ -306,6 +410,43 @@ async function handleUiRequest(req: UiRequest, sender: chrome.runtime.MessageSen
         await upsertCandidate(updated);
         await pushState(updated.tabId);
       }
+      return { type: 'OK' };
+    }
+    case 'GET_HISTORY': {
+      return { type: 'HISTORY', entries: await listHistory() };
+    }
+    case 'REMOVE_HISTORY': {
+      await removeHistory(req.id);
+      pushHistoryUpdated();
+      return { type: 'OK' };
+    }
+    case 'CLEAR_HISTORY': {
+      await clearCompletedHistory();
+      pushHistoryUpdated();
+      return { type: 'OK' };
+    }
+    case 'OPEN_HISTORY_FOLDER': {
+      const entry = await getHistoryEntry(req.id);
+      if (entry) openOutputFolder(entry.jobId);
+      return { type: 'OK' };
+    }
+    case 'DISMISS_JOB': {
+      const loc = await findJobLocation(req.jobId);
+      if (loc) {
+        await removeJob(loc.tabId, req.jobId);
+        await pushState(loc.tabId);
+      }
+      return { type: 'OK' };
+    }
+    case 'REDOWNLOAD': {
+      const entry = await getHistoryEntry(req.id);
+      if (!entry?.redownload) return { type: 'ERROR', message: 'not_redownloadable' };
+      const tabId = sender.tab?.id ?? (await activeTabId());
+      if (tabId == null) return { type: 'ERROR', message: 'no_active_tab' };
+      const candidate = candidateFromRedownload(entry, tabId);
+      await upsertCandidate(candidate);
+      await startDownload(candidate, entry.redownload.variantId, (job) => pushJob(tabId, job));
+      await pushState(tabId);
       return { type: 'OK' };
     }
     case 'GET_NATIVE_STATUS': {
@@ -344,8 +485,10 @@ function init(): void {
       void resolveJobTab(job).then((tabId) => {
         if (tabId != null) pushJob(tabId, job);
       });
+      void recordTerminal(job);
     },
   );
+  installNotificationClicks();
 
   setProgressHandler((msg) => {
     // Native progress/completion -> update matching job.
@@ -424,14 +567,19 @@ async function findJobLocation(jobId: string): Promise<{ tabId: number; job: Dow
 }
 
 async function applyNativeProgress(
-  msg: { type: 'JOB_PROGRESS' | 'JOB_COMPLETED' | 'JOB_FAILED'; jobId: string } & Record<string, unknown>,
+  msg: { type: 'JOB_PROGRESS' | 'JOB_COMPLETED' | 'JOB_FAILED' | 'JOB_PAUSED' | 'JOB_QUEUED'; jobId: string } & Record<string, unknown>,
 ): Promise<void> {
   const loc = await findJobLocation(msg.jobId);
   if (!loc) return;
   const { tabId, job } = loc;
   if (msg.type === 'JOB_PROGRESS') {
     job.progress = msg.progress as DownloadJob['progress'];
-    job.status = 'downloading';
+    job.status = (msg.progress as DownloadJob['progress']).currentStep?.startsWith('Remux') ? 'remuxing' : 'downloading';
+  } else if (msg.type === 'JOB_PAUSED') {
+    job.status = 'paused';
+  } else if (msg.type === 'JOB_QUEUED') {
+    job.status = 'queued';
+    job.progress.currentStep = `Queued (#${msg.position as number})`;
   } else if (msg.type === 'JOB_COMPLETED') {
     job.status = 'completed';
     job.progress.percent = 100;
@@ -443,6 +591,7 @@ async function applyNativeProgress(
   }
   await upsertJob(tabId, job);
   pushJob(tabId, job);
+  await recordTerminal(job, typeof msg.outputPath === 'string' ? msg.outputPath : undefined);
 }
 
 // --- in-browser stream (offscreen) events ----------------------------------
@@ -509,6 +658,7 @@ async function handleOffscreenEvent(evt: OffscreenEvent): Promise<void> {
   }
   await upsertJob(tabId, job);
   pushJob(tabId, job);
+  await recordTerminal(job);
 }
 
 /** Hand a stuck stream job to the native companion. Returns true if accepted. */
@@ -524,9 +674,11 @@ async function handoffToNative(tabId: number, job: DownloadJob): Promise<boolean
   const res = await startNativeDownload({
     jobId: job.id,
     kind: candidate.mediaType === 'dash' ? 'dash' : 'hls',
-    url: candidate.url,
+    // Honor the variant chosen for the in-browser attempt that just failed.
+    url: resolveDownloadUrl(candidate, job.variantId),
     outputFilename: job.outputFilename,
     outputDirectory: settings.downloadFolder || undefined,
+    variantId: job.variantId,
     headers: buildReplayHeaders(candidate),
   });
   if (!res.accepted) {

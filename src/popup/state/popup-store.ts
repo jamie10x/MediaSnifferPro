@@ -24,10 +24,16 @@ class PopupStore {
   private port: chrome.runtime.Port | null = null;
   private tabId: number | null = null;
 
+  private historyListeners = new Set<() => void>();
+
   subscribe(listener: Listener): () => void {
     this.listeners.add(listener);
     listener(this.state);
     return () => this.listeners.delete(listener);
+  }
+
+  onHistoryChanged(cb: () => void): void {
+    this.historyListeners.add(cb);
   }
 
   private set(patch: Partial<PopupState>): void {
@@ -58,6 +64,8 @@ class PopupStore {
   private onPush(msg: PushMessage): void {
     if (msg.type === 'STATE_UPDATED') {
       if (msg.state.tabId === this.tabId) this.set({ tab: msg.state });
+    } else if (msg.type === 'HISTORY_UPDATED') {
+      this.historyListeners.forEach((cb) => cb());
     } else if (msg.type === 'NATIVE_STATUS') {
       this.set({ native: msg.native });
     } else if (msg.type === 'JOB_UPDATED' && this.state.tab) {

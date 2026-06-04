@@ -1,13 +1,16 @@
 import './popup.css';
 import type { DownloadJob, MediaCandidate } from '@shared/types';
+import type { HistoryEntry } from '@shared/history';
 import type { NativeStatus } from '@shared/message-types';
 import { redactUrl, redactHeaders } from '@shared/privacy-utils';
 import { popupStore, type PopupState } from './state/popup-store';
 import { MediaItem } from './components/MediaItem';
 import { JobProgress } from './components/JobProgress';
 import { EmptyState } from './components/EmptyState';
+import { HistoryItem } from './components/HistoryItem';
 import { icons } from './components/icons';
 import { showToast } from './components/Toast';
+import { isBatchDownloadable } from '@shared/quality';
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 
@@ -19,6 +22,11 @@ const countEl = $('count');
 const nativeEl = $('native-status');
 const modalRoot = $('modal-root');
 
+let view: 'detected' | 'history' = 'detected';
+let history: HistoryEntry[] = [];
+let lastState: PopupState | null = null;
+const selection = new Set<string>();
+
 // Header icons.
 $('logo').innerHTML = `<span class="icon">${icons.play}</span>`;
 $('rescan').innerHTML = `<span class="icon">${icons.refresh}</span>`;
@@ -29,6 +37,26 @@ $('rescan').addEventListener('click', () => {
   showToast('Rescanning page…', 'info', 1400);
 });
 $('open-options').addEventListener('click', () => chrome.runtime.openOptionsPage());
+
+// Tabs.
+function setView(next: 'detected' | 'history'): void {
+  view = next;
+  $('tab-detected').classList.toggle('active', next === 'detected');
+  $('tab-history').classList.toggle('active', next === 'history');
+  if (next === 'history') void loadHistory();
+  if (lastState) render(lastState);
+}
+$('tab-detected').addEventListener('click', () => setView('detected'));
+$('tab-history').addEventListener('click', () => setView('history'));
+
+async function loadHistory(): Promise<void> {
+  const res = await popupStore.request({ type: 'GET_HISTORY' });
+  if (res.type === 'HISTORY') {
+    history = res.entries;
+    if (view === 'history' && lastState) render(lastState);
+  }
+}
+popupStore.onHistoryChanged(() => void loadHistory());
 
 function nativeMessage(native: NativeStatus | null): { text: string; cls: 'ok' | 'warn' } | null {
   if (!native) return null;
@@ -55,6 +83,7 @@ function reportJobTransitions(jobs: DownloadJob[]): void {
 }
 
 function render(state: PopupState): void {
+  lastState = state;
   domainEl.textContent = state.tab?.pageDomain || (state.loading ? 'Scanning…' : '—');
 
   const native = nativeMessage(state.native);
@@ -67,23 +96,33 @@ function render(state: PopupState): void {
     nativeEl.className = 'native-status hidden';
   }
 
-  // Jobs.
+  // Jobs (active downloads shown on both tabs; completed stay until dismissed).
   reportJobTransitions(state.tab?.jobs ?? []);
   jobsEl.replaceChildren();
-  const activeJobs = (state.tab?.jobs ?? []).filter(
-    (j) => j.status !== 'completed' || Date.now() - (j.completedAt ?? 0) < 60_000,
-  );
-  activeJobs.forEach((job) =>
+  (state.tab?.jobs ?? []).forEach((job) =>
     jobsEl.appendChild(
       JobProgress({
         job,
         onCancel: (jobId) => void popupStore.request({ type: 'CANCEL_DOWNLOAD', jobId }),
+        onPause: (jobId) => {
+          void popupStore.request({ type: 'PAUSE_DOWNLOAD', jobId });
+          showToast('Paused', 'info', 1400);
+        },
+        onResume: (jobId) => {
+          void popupStore.request({ type: 'RESUME_DOWNLOAD', jobId });
+          showToast('Resuming…', 'info', 1400);
+        },
         onOpenFolder: (jobId) => void popupStore.request({ type: 'OPEN_JOB_FOLDER', jobId }),
+        onDismiss: (jobId) => void popupStore.request({ type: 'DISMISS_JOB', jobId }),
       }),
     ),
   );
 
-  // Candidates.
+  if (view === 'history') renderHistory();
+  else renderDetected(state);
+}
+
+function renderDetected(state: PopupState): void {
   listEl.replaceChildren();
   const candidates = (state.tab?.candidates ?? []).filter((c) => !c.isSegment);
   countEl.innerHTML = `<b>${candidates.length}</b> item${candidates.length === 1 ? '' : 's'}`;
@@ -97,10 +136,24 @@ function render(state: PopupState): void {
     return;
   }
 
+  const batchable = candidates.filter(isBatchDownloadable);
+  // Prune stale selections.
+  for (const id of [...selection]) if (!batchable.some((c) => c.id === id)) selection.delete(id);
+
+  if (batchable.length >= 2) listEl.appendChild(batchToolbar(batchable));
+
   for (const c of candidates) {
+    const selectable = isBatchDownloadable(c) && batchable.length >= 2;
     listEl.appendChild(
       MediaItem({
         candidate: c,
+        selectable,
+        selected: selection.has(c.id),
+        onToggleSelect: (id, checked) => {
+          if (checked) selection.add(id);
+          else selection.delete(id);
+          if (lastState) renderDetected(lastState);
+        },
         onDownload: (candidateId, variantId) => {
           void popupStore.request({ type: 'START_DOWNLOAD', candidateId, variantId });
           showToast('Download started', 'info', 1600);
@@ -117,6 +170,82 @@ function render(state: PopupState): void {
           showToast('Loading qualities…', 'info', 1400);
         },
         onDetails: showDetails,
+      }),
+    );
+  }
+}
+
+function batchToolbar(batchable: MediaCandidate[]): HTMLElement {
+  const bar = document.createElement('div');
+  bar.className = 'batch-bar';
+
+  const left = document.createElement('label');
+  left.className = 'batch-select-all';
+  const all = document.createElement('input');
+  all.type = 'checkbox';
+  all.checked = selection.size === batchable.length && batchable.length > 0;
+  all.addEventListener('change', () => {
+    if (all.checked) batchable.forEach((c) => selection.add(c.id));
+    else selection.clear();
+    if (lastState) renderDetected(lastState);
+  });
+  const lbl = document.createElement('span');
+  lbl.textContent = selection.size > 0 ? `${selection.size} selected` : 'Select all';
+  left.append(all, lbl);
+
+  const btn = document.createElement('button');
+  btn.className = 'primary';
+  const ids = selection.size > 0 ? [...selection] : batchable.map((c) => c.id);
+  btn.innerHTML = `<span class="icon">${icons.download}</span>`;
+  const span = document.createElement('span');
+  span.textContent = selection.size > 0 ? `Download ${selection.size}` : `Download all (${batchable.length})`;
+  btn.appendChild(span);
+  btn.addEventListener('click', () => {
+    void popupStore.request({ type: 'BATCH_DOWNLOAD', candidateIds: ids });
+    showToast(`Queued ${ids.length} download${ids.length === 1 ? '' : 's'}`, 'success', 2200);
+    selection.clear();
+    if (lastState) renderDetected(lastState);
+  });
+
+  bar.append(left, btn);
+  return bar;
+}
+
+function renderHistory(): void {
+  listEl.replaceChildren();
+  countEl.innerHTML = `<b>${history.length}</b> download${history.length === 1 ? '' : 's'}`;
+
+  if (history.length === 0) {
+    listEl.appendChild(EmptyState('No downloads yet', 'Your completed downloads will appear here.'));
+    return;
+  }
+
+  if (history.some((e) => e.status === 'completed')) {
+    const bar = document.createElement('div');
+    bar.className = 'history-toolbar';
+    const clear = document.createElement('button');
+    clear.className = 'link-btn';
+    clear.textContent = 'Clear completed';
+    clear.addEventListener('click', () => void popupStore.request({ type: 'CLEAR_HISTORY' }));
+    bar.appendChild(clear);
+    listEl.appendChild(bar);
+  }
+
+  for (const e of history) {
+    listEl.appendChild(
+      HistoryItem({
+        entry: e,
+        onOpenFolder: (id) => void popupStore.request({ type: 'OPEN_HISTORY_FOLDER', id }),
+        onRedownload: (id) => {
+          void popupStore.request({ type: 'REDOWNLOAD', id });
+          showToast('Re-downloading…', 'info', 1600);
+          setView('detected');
+        },
+        onCopy: async (url) => {
+          await navigator.clipboard.writeText(url).catch(() => {});
+          showToast('URL copied to clipboard', 'success');
+        },
+        onRemove: (id) => void popupStore.request({ type: 'REMOVE_HISTORY', id }),
       }),
     );
   }
