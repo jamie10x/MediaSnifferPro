@@ -6,7 +6,11 @@
 
 import type { StreamVariant } from '@shared/types';
 import { parseHls, parseHlsMediaPlaylist } from '@shared/hls-parser';
-import { remuxWithRouter } from './engines/router';
+import { NativeRequiredError, remuxWithRouter } from './engines/router';
+
+// Past this many segments, an in-browser (all-in-memory) download is risky;
+// hand it to the native companion instead.
+const MAX_INBROWSER_SEGMENTS = 1500;
 
 export interface StreamProgress {
   percent: number;
@@ -22,7 +26,6 @@ export interface StreamResult {
 
 export interface StreamOptions {
   concurrency: number;
-  advancedFfmpegFallback: boolean;
   onProgress: (p: StreamProgress) => void;
 }
 
@@ -96,11 +99,13 @@ export async function downloadHlsStream(
   }
   if (media.segments.length === 0) throw new Error('Playlist contains no segments');
 
-  // Download init segment (fMP4) first, then media segments concurrently.
-  let initSegment: Uint8Array | undefined;
-  if (media.initSegmentUrl) {
-    options.onProgress({ percent: 3, downloadedBytes: 0, currentStep: 'Init segment' });
-    initSegment = await fetchSegment(media.initSegmentUrl);
+  // Route complex/large jobs to the native companion (hybrid architecture):
+  // mux.js handles only simple clear MPEG-TS HLS in-browser.
+  if (media.isFmp4) {
+    throw new NativeRequiredError('fMP4 stream — needs the desktop helper.');
+  }
+  if (media.segments.length > MAX_INBROWSER_SEGMENTS) {
+    throw new NativeRequiredError('Large stream — needs the desktop helper.');
   }
 
   const total = media.segments.length;
@@ -111,10 +116,7 @@ export async function downloadHlsStream(
   });
 
   options.onProgress({ percent: 94, downloadedBytes: 0, currentStep: 'Remuxing to MP4' });
-  const result = await remuxWithRouter(
-    { segments, initSegment, isFmp4: media.isFmp4 },
-    { advancedFfmpegFallback: options.advancedFfmpegFallback },
-  );
+  const result = await remuxWithRouter({ segments, isFmp4: false });
 
   options.onProgress({ percent: 100, downloadedBytes: result.blob.size, currentStep: 'Done' });
   return { blob: result.blob, extension: result.extension, engine: result.engine };

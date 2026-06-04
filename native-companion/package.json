@@ -1,0 +1,23 @@
+{
+  "name": "media-sniffer-pro-companion",
+  "version": "0.1.0",
+  "description": "Local native-messaging companion for MediaSniffer Pro — downloads and remuxes complex/large clear streams with real ffmpeg.",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "msp-companion": "dist/main.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/main.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "install-host": "node dist/install/register-host.js"
+  },
+  "dependencies": {
+    "ffmpeg-static": "^5.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.9.0",
+    "typescript": "^5.6.3"
+  }
+}

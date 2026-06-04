@@ -92,6 +92,13 @@ export interface MediaCandidate {
   requestHeadersRedacted?: Record<string, string>;
   responseHeadersRedacted?: Record<string, string>;
 
+  /**
+   * Non-sensitive request headers (Referer/Origin/User-Agent only — never
+   * cookies/auth) captured from the page's own request, so the native companion
+   * can replay against Referer-checking CDNs.
+   */
+  replayHeaders?: { referer?: string; origin?: string; userAgent?: string };
+
   createdAt: number;
   updatedAt: number;
 }

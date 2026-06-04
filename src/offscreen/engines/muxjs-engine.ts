@@ -1,7 +1,7 @@
-// Primary engine.
-//   - MPEG-TS HLS segments  -> transmux to fragmented MP4 via mux.js.
-//   - fMP4 (m4s) HLS         -> concatenate init segment + media fragments
-//                               (already valid fMP4; no transmux needed).
+// Extension engine: transmux clear MPEG-TS HLS segments into a single MP4 with
+// mux.js. This is the DEFAULT path for simple clear HLS. Anything mux.js can't
+// safely handle (fMP4, DASH, separate audio/video, broken timestamps) is routed
+// to the native companion instead — see the router and stream-downloader.
 
 import muxjs from 'mux.js';
 import type { RemuxEngine, RemuxInput, RemuxResult } from './types';
@@ -49,16 +49,11 @@ function transmuxTs(segments: Uint8Array[]): Promise<Uint8Array> {
 
 export const muxjsEngine: RemuxEngine = {
   name: 'mux.js',
-  canHandle() {
-    // Handles both TS (transmux) and fMP4 (concat).
-    return true;
+  canHandle(input: RemuxInput): boolean {
+    // TS segments only. fMP4 is handled by the native companion.
+    return !input.isFmp4;
   },
   async remux(input: RemuxInput): Promise<RemuxResult> {
-    if (input.isFmp4) {
-      const parts = input.initSegment ? [input.initSegment, ...input.segments] : input.segments;
-      const merged = concat(parts);
-      return { blob: new Blob([merged.buffer as ArrayBuffer], { type: 'video/mp4' }), extension: 'mp4', engine: 'concat-fmp4' };
-    }
     const mp4 = await transmuxTs(input.segments);
     return { blob: new Blob([mp4.buffer as ArrayBuffer], { type: 'video/mp4' }), extension: 'mp4', engine: 'mux.js' };
   },

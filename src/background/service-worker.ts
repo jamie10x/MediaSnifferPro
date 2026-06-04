@@ -110,6 +110,7 @@ interface IngestInput {
   fileSizeBytes?: number;
   transferSizeBytes?: number;
   responseHeaders?: Record<string, string>;
+  replayHeaders?: MediaCandidate['replayHeaders'];
 }
 
 async function ingest(input: IngestInput): Promise<MediaCandidate | null> {
@@ -182,6 +183,7 @@ async function ingest(input: IngestInput): Promise<MediaCandidate | null> {
     isDrmLikely,
     unsupportedReason: isDrmLikely ? signalDrm.reason : undefined,
     responseHeadersRedacted: input.responseHeaders ? redactHeaders(input.responseHeaders) : undefined,
+    replayHeaders: input.replayHeaders,
     createdAt: now,
     updatedAt: now,
   };
@@ -210,15 +212,36 @@ async function ingestRawList(tabId: number, frameId: number | undefined, raws: R
   }
 }
 
+const autoParsed = new Set<string>();
+
 function handleNetworkHit(hit: NetworkHit): void {
-  void ingest({
-    tabId: hit.tabId,
-    url: hit.url,
-    source: 'network',
-    contentType: hit.contentType,
-    fileSizeBytes: hit.contentLength,
-    responseHeaders: hit.responseHeaders,
-  });
+  void (async () => {
+    const candidate = await ingest({
+      tabId: hit.tabId,
+      url: hit.url,
+      source: 'network',
+      contentType: hit.contentType,
+      fileSizeBytes: hit.contentLength,
+      responseHeaders: hit.responseHeaders,
+      replayHeaders: hit.requestHeaders,
+    });
+    if (!candidate) return;
+    // Auto-parse HLS/DASH manifests once so qualities/variants show up without
+    // the user clicking — matching what competing downloaders do.
+    if (
+      candidate.isManifest &&
+      !candidate.isDrmLikely &&
+      !candidate.variants &&
+      !autoParsed.has(candidate.canonicalKey)
+    ) {
+      autoParsed.add(candidate.canonicalKey);
+      const updated = await parseManifestForCandidate(candidate);
+      if (updated) {
+        await upsertCandidate(updated);
+        await pushState(candidate.tabId);
+      }
+    }
+  })();
 }
 
 // --- message routing -------------------------------------------------------
@@ -428,8 +451,15 @@ async function handleOffscreenEvent(evt: OffscreenEvent): Promise<void> {
       revokeBlob(evt.blobUrl);
     }
   } else {
-    job.status = 'failed';
-    job.error = { code: evt.error.code, message: evt.error.message, recoverable: true };
+    // 'native_required' means a complex/large stream the in-browser engine won't
+    // handle — present it as "needs helper", not a hard failure.
+    if (evt.error.code === 'native_required') {
+      job.status = 'blocked';
+      job.error = { code: 'native_required', message: evt.error.message, recoverable: true };
+    } else {
+      job.status = 'failed';
+      job.error = { code: evt.error.code, message: evt.error.message, recoverable: true };
+    }
     void closeOffscreenIfIdle(await countActiveJobs());
   }
   await upsertJob(tabId, job);

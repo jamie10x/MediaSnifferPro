@@ -126,8 +126,6 @@ export interface Settings {
   preferredFormat: 'original' | 'mp4' | 'mkv' | 'webm';
   filenameTemplate: string;
   nativeHelperEnabled: boolean;
-  /** Enable the ffmpeg.wasm fallback engine when mux.js can't produce a valid MP4. */
-  advancedFfmpegFallback: boolean;
   /** Concurrent segment downloads for in-browser stream downloading. */
   streamConcurrency: number;
   privacyMode: boolean;
@@ -151,7 +149,6 @@ export const DEFAULT_SETTINGS: Settings = {
   preferredFormat: 'original',
   filenameTemplate: '{title}.{ext}',
   nativeHelperEnabled: false,
-  advancedFfmpegFallback: false,
   streamConcurrency: 6,
   privacyMode: true,
   debugLogs: false,

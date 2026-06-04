@@ -54,6 +54,15 @@ export function classifyMedia(url: string, contentType?: string): Classification
   if (VIDEO_EXTENSIONS.has(ext)) return { mediaType: 'video', isSegment: false, isManifest: false };
   if (AUDIO_EXTENSIONS.has(ext)) return { mediaType: 'audio', isSegment: false, isManifest: false };
   if (THUMBNAIL_EXTENSIONS.has(ext)) return { mediaType: 'thumbnail', isSegment: false, isManifest: false };
+
+  // 3) Last resort: a manifest extension may sit mid-path or in a query param
+  //    (e.g. /index.m3u8/chunk, ?file=master.mpd). Sniff the whole URL.
+  if (/\.m3u8(\b|[/?#%])/i.test(url) || /[?&](?:file|url|src)=[^&]*\.m3u8/i.test(url)) {
+    return { mediaType: 'hls', isSegment: false, isManifest: true };
+  }
+  if (/\.mpd(\b|[/?#%])/i.test(url) || /[?&](?:file|url|src)=[^&]*\.mpd/i.test(url)) {
+    return { mediaType: 'dash', isSegment: false, isManifest: true };
+  }
   return { mediaType: 'unknown', isSegment: false, isManifest: false };
 }
 

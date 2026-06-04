@@ -93,7 +93,6 @@ async function startHlsDownload(
     jobId: job.id,
     playlistUrl: resolvePlaylistUrl(candidate, variantId),
     outputBasename: stripExt(job.outputFilename),
-    advancedFfmpegFallback: settings.advancedFfmpegFallback,
     concurrency: Math.max(1, Math.min(12, settings.streamConcurrency)),
   };
 

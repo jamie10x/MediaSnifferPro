@@ -63,13 +63,10 @@
           Concurrent segment downloads
           <input type="number" min="1" max="12" data-key="streamConcurrency" />
         </label>
-        <label class="toggle">
-          <input type="checkbox" data-key="advancedFfmpegFallback" /> Advanced ffmpeg.wasm fallback
-        </label>
         <p class="hint">
-          Clear HLS streams are downloaded and remuxed to MP4 in your browser (mux.js).
-          The ffmpeg fallback is for unusual codecs; it must be packaged locally and is
-          off by default.
+          Simple clear HLS (MPEG-TS) streams are downloaded and remuxed to MP4 in your
+          browser via mux.js. Complex streams (fMP4, DASH, large or long downloads) are
+          handed to the desktop helper, which uses real ffmpeg.
         </p>
       </section>
 

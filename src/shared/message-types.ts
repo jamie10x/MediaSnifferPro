@@ -88,6 +88,8 @@ export interface DownloadJobRequest {
   outputFilename: string;
   outputDirectory?: string;
   variantId?: string;
+  /** Non-sensitive headers to replay against Referer-checking CDNs (no cookies). */
+  headers?: { referer?: string; origin?: string; userAgent?: string };
 }
 
 export type NativeRequest =
@@ -112,7 +114,6 @@ export interface StreamDownloadJob {
   /** Media playlist URL to download (already resolved from any master/variant). */
   playlistUrl: string;
   outputBasename: string; // without extension
-  advancedFfmpegFallback: boolean;
   concurrency: number;
 }
 

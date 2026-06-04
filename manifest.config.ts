@@ -23,11 +23,6 @@ export default defineManifest({
   ],
   optional_permissions: ['tabs'],
   host_permissions: ['<all_urls>'],
-  // wasm-unsafe-eval is required for the (flagged) ffmpeg.wasm fallback engine,
-  // which is packaged locally — never loaded from a remote URL.
-  content_security_policy: {
-    extension_pages: "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'",
-  },
   background: {
     service_worker: 'src/background/service-worker.ts',
     type: 'module',

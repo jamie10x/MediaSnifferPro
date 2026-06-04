@@ -19,7 +19,6 @@ async function runJob(message: OffscreenRequest): Promise<void> {
   try {
     const result = await downloadHlsStream(job.playlistUrl, {
       concurrency: job.concurrency,
-      advancedFfmpegFallback: job.advancedFfmpegFallback,
       onProgress: (p) =>
         emit({
           type: 'OFFSCREEN_PROGRESS',
@@ -41,10 +40,11 @@ async function runJob(message: OffscreenRequest): Promise<void> {
       engine: result.engine,
     });
   } catch (err) {
+    const code = (err as { code?: string })?.code === 'native_required' ? 'native_required' : 'stream_failed';
     emit({
       type: 'OFFSCREEN_FAILED',
       jobId: job.jobId,
-      error: { code: 'stream_failed', message: err instanceof Error ? err.message : 'unknown' },
+      error: { code, message: err instanceof Error ? err.message : 'unknown' },
     });
   }
 }
