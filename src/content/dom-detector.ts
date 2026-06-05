@@ -83,6 +83,32 @@ export function detectFromRoot(root: ParentNode): RawCandidate[] {
   return out;
 }
 
+/** Best representative image for the page (poster/preview), if any. */
+export function detectPageThumbnail(): string | undefined {
+  const metaSelectors = [
+    'meta[property="og:image"]',
+    'meta[property="og:image:secure_url"]',
+    'meta[name="twitter:image"]',
+    'meta[name="twitter:image:src"]',
+    'meta[itemprop="image"]',
+  ];
+  for (const sel of metaSelectors) {
+    const el = document.querySelector<HTMLMetaElement>(sel);
+    if (el?.content) {
+      const abs = toAbsolute(el.content);
+      if (abs && isHttpLike(abs)) return abs;
+    }
+  }
+  // Fall back to a same-origin <video poster>.
+  for (const v of Array.from(document.querySelectorAll<HTMLVideoElement>('video'))) {
+    if (v.poster) {
+      const abs = toAbsolute(v.poster);
+      if (abs && isHttpLike(abs)) return abs;
+    }
+  }
+  return undefined;
+}
+
 export function detectMetadata(): RawCandidate[] {
   const out: RawCandidate[] = [];
 

@@ -53,7 +53,7 @@ export type ContentInbound =
 // content -> background
 // ---------------------------------------------------------------------------
 export type ContentMessage =
-  | { type: 'CANDIDATES_FOUND'; candidates: RawCandidate[]; signals: PageSignals }
+  | { type: 'CANDIDATES_FOUND'; candidates: RawCandidate[]; signals: PageSignals; pageThumbnail?: string }
   | { type: 'PAGE_SIGNALS'; signals: PageSignals };
 
 // ---------------------------------------------------------------------------

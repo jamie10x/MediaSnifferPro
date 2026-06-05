@@ -89,6 +89,9 @@ export interface MediaCandidate {
   unsupportedReason?: string;
 
   variants?: StreamVariant[];
+  /** A page-level poster image (og:image / video poster) for the preview. */
+  posterUrl?: string;
+
   subtitles?: SubtitleTrack[];
   thumbnails?: ThumbnailAsset[];
 

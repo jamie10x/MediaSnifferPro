@@ -30,6 +30,7 @@ import {
   listJobs,
   removeJob,
   setPageInfo,
+  setPageMeta,
   upsertCandidate,
   upsertJob,
 } from './candidate-store';
@@ -50,6 +51,7 @@ import { parseManifestForCandidate } from './manifest-handler';
 import { closeOffscreenIfIdle, revokeBlob } from './offscreen-manager';
 import { buildReplayHeaders } from '@shared/replay-headers';
 import { isBatchDownloadable, resolveDownloadUrl } from '@shared/quality';
+import { cleanPageTitle } from '@shared/title-utils';
 import { addHistory, clearCompletedHistory, getHistoryEntry, listHistory, removeHistory } from './history-store';
 import { installNotificationClicks, notifyJobDone } from './notifier';
 import type { HistoryEntry, HistoryStatus } from '@shared/history';
@@ -94,13 +96,16 @@ async function pushWidget(tabId: number): Promise<void> {
     summary = {
       enabled: true,
       helperConnected: native.installed,
-      items: candidates.slice(0, 12).map((c) => ({
-        id: c.id,
-        label: c.filename || getFilenameFromUrl(c.url) || domain,
-        mediaType: c.mediaType,
-        quality: c.qualityLabel ?? (c.height ? `${c.height}p` : undefined),
-        needsHelper: c.supportStatus === 'needs_native_companion',
-      })),
+      items: candidates.slice(0, 12).map((c) => {
+        const streamish = c.mediaType === 'hls' || c.mediaType === 'dash' || c.mediaType === 'video';
+        return {
+          id: c.id,
+          label: (streamish && c.pageTitle) || c.filename || getFilenameFromUrl(c.url) || domain,
+          mediaType: c.mediaType,
+          quality: c.qualityLabel ?? (c.height ? `${c.height}p` : undefined),
+          needsHelper: c.supportStatus === 'needs_native_companion',
+        };
+      }),
     };
   }
 
@@ -249,6 +254,7 @@ async function ingest(input: IngestInput): Promise<MediaCandidate | null> {
   const page = await getPageInfo(input.tabId);
   const pageUrl = page.pageUrl;
   const pageDomain = page.pageDomain || getDomain(input.url);
+  const pageTitle = page.pageTitle || input.pageTitle || '';
 
   // Domain policy gates.
   const blocked = matchesDomainList(input.url, settings.blocklist) || matchesDomainList(pageUrl, settings.blocklist);
@@ -289,9 +295,10 @@ async function ingest(input: IngestInput): Promise<MediaCandidate | null> {
     tabId: input.tabId,
     frameId: input.frameId,
     pageUrl,
-    pageTitle: input.pageTitle ?? '',
+    pageTitle,
     pageDomain,
     frameUrl: input.frameUrl,
+    posterUrl: page.posterUrl,
     url: input.url,
     canonicalKey: key,
     source: input.source,
@@ -579,8 +586,17 @@ function init(): void {
       // sender.url is the (possibly cross-origin iframe) frame's URL — the best
       // Referer for embedded-player segments.
       const frameUrl = sender.url;
+      const tabUrl = sender.tab?.url;
+      const tabTitle = sender.tab?.title;
+      const poster = message.pageThumbnail;
       void (async () => {
-        if (sender.tab?.url) await setPageInfo(tabId, sender.tab.url, getDomain(sender.tab.url));
+        if (tabUrl) {
+          const domain = getDomain(tabUrl);
+          await setPageInfo(tabId, tabUrl, domain);
+          // Use the TOP tab's title (not the iframe's) so the name is the real
+          // page/episode title, cleaned of the trailing site name.
+          await setPageMeta(tabId, { pageTitle: cleanPageTitle(tabTitle, domain), posterUrl: poster });
+        }
         await ingestRawList(tabId, sender.frameId, frameUrl, message.candidates);
       })();
       return false;

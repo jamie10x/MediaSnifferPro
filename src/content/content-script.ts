@@ -2,7 +2,7 @@
 // dedups locally, and reports candidates + page signals to the background.
 
 import type { ContentInbound, ContentMessage, RawCandidate } from '@shared/message-types';
-import { detectFromRoot, detectMetadata } from './dom-detector';
+import { detectFromRoot, detectMetadata, detectPageThumbnail } from './dom-detector';
 import { detectInShadowDom } from './shadow-dom-detector';
 import { detectFromPerformance } from './performance-detector';
 import { collectPageSignals, installPageSignalProbes } from './page-signal-detector';
@@ -35,7 +35,12 @@ function scanAndReport(force = false): void {
   fresh.forEach((c) => reported.add(c.url));
 
   const signals = collectPageSignals();
-  const message: ContentMessage = { type: 'CANDIDATES_FOUND', candidates: fresh, signals };
+  const message: ContentMessage = {
+    type: 'CANDIDATES_FOUND',
+    candidates: fresh,
+    signals,
+    pageThumbnail: detectPageThumbnail(),
+  };
   // Always send signals; only skip when there is genuinely nothing new.
   if (fresh.length > 0 || force) {
     void chrome.runtime.sendMessage(message).catch(() => {});

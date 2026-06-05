@@ -37,6 +37,30 @@ function chip(text: string, cls = ''): HTMLElement {
   return el;
 }
 
+function hostOf(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
+  } catch {
+    return '';
+  }
+}
+
+/** The friendly display title: the page/episode title for streams & video. */
+function displayName(c: MediaCandidate): string {
+  const title = c.pageTitle?.trim();
+  const isStream = c.mediaType === 'hls' || c.mediaType === 'dash';
+  if (title && (isStream || c.mediaType === 'video')) return title;
+  return c.filename || title || c.url;
+}
+
+/** Secondary line: the underlying file/manifest name (so it's not lost). */
+function displaySub(c: MediaCandidate): string {
+  const name = displayName(c);
+  if (c.filename && c.filename !== name) return c.filename;
+  if (name !== c.url) return hostOf(c.url);
+  return '';
+}
+
 export interface MediaItemProps {
   candidate: MediaCandidate;
   onDownload: (candidateId: string, variantId?: string) => void;
@@ -58,7 +82,7 @@ export function MediaItem(props: MediaItemProps): HTMLElement {
   const item = document.createElement('div');
   item.className = `media-item${isProtected ? ' protected' : ''}${props.selected ? ' selected' : ''}`;
 
-  // Head: optional checkbox + icon + name + type.
+  // Head: optional checkbox + thumbnail + title + type/subtitle.
   const head = document.createElement('div');
   head.className = 'mi-head';
   if (props.selectable) {
@@ -69,9 +93,30 @@ export function MediaItem(props: MediaItemProps): HTMLElement {
     cb.addEventListener('change', () => props.onToggleSelect?.(c.id, cb.checked));
     head.appendChild(cb);
   }
-  const ic = document.createElement('span');
-  ic.className = `mi-icon ${c.mediaType}`;
-  ic.innerHTML = icons[iconFor(c.mediaType)];
+
+  // Thumbnail: poster image if we have one, else a gradient type icon.
+  const thumb = document.createElement('div');
+  thumb.className = `mi-thumb ${c.mediaType}`;
+  const showPoster = !!c.posterUrl && (c.mediaType === 'video' || isStream);
+  if (showPoster) {
+    const img = document.createElement('img');
+    img.src = c.posterUrl!;
+    img.alt = '';
+    img.loading = 'lazy';
+    img.addEventListener('error', () => {
+      thumb.classList.add('fallback');
+      thumb.innerHTML = icons[iconFor(c.mediaType)];
+    });
+    thumb.appendChild(img);
+    const tag = document.createElement('span');
+    tag.className = 'mi-thumb-tag';
+    tag.textContent = c.mediaType.toUpperCase();
+    thumb.appendChild(tag);
+  } else {
+    thumb.classList.add('fallback');
+    thumb.innerHTML = icons[iconFor(c.mediaType)];
+  }
+
   const headtext = document.createElement('div');
   headtext.className = 'mi-headtext';
   const typeEl = document.createElement('div');
@@ -79,10 +124,17 @@ export function MediaItem(props: MediaItemProps): HTMLElement {
   typeEl.textContent = c.mediaType.toUpperCase();
   const name = document.createElement('div');
   name.className = 'mi-name';
-  name.textContent = c.filename || c.url;
-  name.title = c.url;
+  name.textContent = displayName(c);
+  name.title = displayName(c);
   headtext.append(typeEl, name);
-  head.append(ic, headtext);
+  const sub = displaySub(c);
+  if (sub) {
+    const subEl = document.createElement('div');
+    subEl.className = 'mi-sub';
+    subEl.textContent = sub;
+    headtext.appendChild(subEl);
+  }
+  head.append(thumb, headtext);
   item.appendChild(head);
 
   // Chips: status + metadata.

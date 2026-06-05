@@ -8,6 +8,8 @@ import { logger } from '@shared/logger';
 interface TabBucket {
   pageUrl: string;
   pageDomain: string;
+  pageTitle?: string;
+  posterUrl?: string;
   candidates: Record<string, MediaCandidate>; // keyed by canonicalKey
   jobs: Record<string, DownloadJob>; // keyed by jobId
 }
@@ -112,9 +114,21 @@ export function findJobByBrowserDownloadId(
   return null;
 }
 
-export async function getPageInfo(tabId: number): Promise<{ pageUrl: string; pageDomain: string }> {
+export async function setPageMeta(
+  tabId: number,
+  meta: { pageTitle?: string; posterUrl?: string },
+): Promise<void> {
   const bucket = await getBucket(tabId);
-  return { pageUrl: bucket.pageUrl, pageDomain: bucket.pageDomain };
+  if (meta.pageTitle) bucket.pageTitle = meta.pageTitle;
+  if (meta.posterUrl) bucket.posterUrl = meta.posterUrl;
+  await persist(tabId);
+}
+
+export async function getPageInfo(
+  tabId: number,
+): Promise<{ pageUrl: string; pageDomain: string; pageTitle?: string; posterUrl?: string }> {
+  const bucket = await getBucket(tabId);
+  return { pageUrl: bucket.pageUrl, pageDomain: bucket.pageDomain, pageTitle: bucket.pageTitle, posterUrl: bucket.posterUrl };
 }
 
 /** Clear a single tab's data (on navigation or close). */
