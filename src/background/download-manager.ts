@@ -15,6 +15,21 @@ import { buildReplayHeaders } from '@shared/replay-headers';
 import { pickVariantId, resolveDownloadUrl } from '@shared/quality';
 import { logger } from '@shared/logger';
 
+import type { Settings } from '@shared/constants';
+
+/** Performance tuning passed to native jobs. */
+export function nativeTuning(settings: Settings): {
+  segmentConcurrency: number;
+  maxParallel: number;
+  bandwidthBytesPerSec?: number;
+} {
+  return {
+    segmentConcurrency: Math.max(1, Math.min(16, settings.streamConcurrency)),
+    maxParallel: Math.max(1, Math.min(8, settings.maxParallelDownloads)),
+    bandwidthBytesPerSec: settings.bandwidthLimitMbps > 0 ? Math.round(settings.bandwidthLimitMbps * 1048576) : undefined,
+  };
+}
+
 function newJob(candidate: MediaCandidate, partial: Partial<DownloadJob>): DownloadJob {
   const now = Date.now();
   return {
@@ -149,6 +164,7 @@ async function startAudioExtraction(
     url: resolveDownloadUrl(candidate, variantId),
     outputFilename,
     outputDirectory: settings.downloadFolder || undefined,
+    ...nativeTuning(settings),
     headers: buildReplayHeaders(candidate),
   });
   job.status = res.accepted ? 'downloading' : 'failed';
@@ -194,6 +210,7 @@ export async function startEdit(
     url: resolveDownloadUrl(candidate, variantId),
     outputFilename,
     outputDirectory: settings.downloadFolder || undefined,
+    ...nativeTuning(settings),
     headers: buildReplayHeaders(candidate),
   });
   job.status = res.accepted ? 'downloading' : 'failed';
@@ -240,6 +257,7 @@ export async function startSubtitleDownload(
       url: subtitleUrl,
       outputFilename,
       outputDirectory: settings.downloadFolder || undefined,
+      ...nativeTuning(settings),
       headers: buildReplayHeaders(candidate),
     });
     job.status = res.accepted ? 'downloading' : 'failed';
@@ -333,6 +351,7 @@ async function startNativeStreamDownload(
     outputFilename: filename,
     outputDirectory: dlSettings.downloadFolder || undefined,
     variantId,
+    ...nativeTuning(dlSettings),
     headers: buildReplayHeaders(candidate),
   });
   if (!result.accepted) {

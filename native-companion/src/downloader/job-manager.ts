@@ -9,8 +9,15 @@ import { assertNotProtected, resolveOutputPath, sanitizeFilename } from '../secu
 import type { DownloadJobRequest, NativeResponse } from '../native-messaging/protocol.js';
 
 type Send = (res: NativeResponse) => void;
-const MAX_CONCURRENT = 3;
-const SEGMENT_CONCURRENCY = 10;
+let maxConcurrent = 3;
+let segmentConcurrency = 10;
+let bandwidthBytesPerSec: number | undefined;
+
+function applyTuning(req: DownloadJobRequest): void {
+  if (req.maxParallel && req.maxParallel > 0) maxConcurrent = Math.min(8, req.maxParallel);
+  if (req.segmentConcurrency && req.segmentConcurrency > 0) segmentConcurrency = Math.min(16, req.segmentConcurrency);
+  bandwidthBytesPerSec = req.bandwidthBytesPerSec && req.bandwidthBytesPerSec > 0 ? req.bandwidthBytesPerSec : undefined;
+}
 
 interface Tracked {
   req: DownloadJobRequest;
@@ -46,6 +53,7 @@ function ensureExt(name: string, req: DownloadJobRequest): string {
 }
 
 export function startJob(req: DownloadJobRequest, requestId: string, send: Send): void {
+  applyTuning(req);
   try {
     assertNotProtected(req.url);
   } catch (err) {
@@ -66,7 +74,7 @@ export function startJob(req: DownloadJobRequest, requestId: string, send: Send)
   jobs.set(req.jobId, tracked);
   send({ type: 'JOB_ACCEPTED', requestId, jobId: req.jobId });
 
-  if (activeCount() >= MAX_CONCURRENT) {
+  if (activeCount() >= maxConcurrent) {
     queue.push(req.jobId);
     send({ type: 'JOB_QUEUED', jobId: req.jobId, position: queue.length });
   } else {
@@ -80,7 +88,7 @@ function finish(jobId: string): void {
 }
 
 function pumpQueue(): void {
-  while (activeCount() < MAX_CONCURRENT && queue.length > 0) {
+  while (activeCount() < maxConcurrent && queue.length > 0) {
     const id = queue.shift()!;
     const t = jobs.get(id);
     if (t && t.status === 'queued') void runJob(t);
@@ -110,13 +118,19 @@ async function runHls(tracked: Tracked, send: Send, resumeState?: JobState): Pro
     state = resumeState ?? tracked.state ?? (await prepareHlsState(req, tracked.outputPath));
   } catch (err) {
     const code = (err as { code?: string }).code ?? 'prepare_failed';
+    // Streams with a separate audio group would download silent through the
+    // segment engine — let ffmpeg handle them (it muxes audio groups correctly).
+    if (code === 'use_ffmpeg') {
+      runFfmpegJob(tracked, send);
+      return;
+    }
     send({ type: 'JOB_FAILED', jobId: req.jobId, error: { code, message: (err as Error).message } });
     finish(req.jobId);
     return;
   }
   tracked.state = state;
 
-  await runHlsJob(state, control, SEGMENT_CONCURRENCY, {
+  await runHlsJob(state, control, segmentConcurrency, bandwidthBytesPerSec, {
     onProgress: (p) =>
       send({
         type: 'JOB_PROGRESS',
@@ -179,7 +193,7 @@ export function pauseJob(jobId: string): void {
 export function resumeJob(jobId: string, send: Send): void {
   const t = jobs.get(jobId);
   if (t && t.status === 'paused') {
-    if (activeCount() >= MAX_CONCURRENT) {
+    if (activeCount() >= maxConcurrent) {
       t.status = 'queued';
       queue.push(jobId);
       send({ type: 'JOB_QUEUED', jobId, position: queue.length });

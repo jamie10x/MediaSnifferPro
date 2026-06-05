@@ -8,7 +8,7 @@ import { writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import type { DownloadJobRequest } from '../native-messaging/protocol.js';
 import { fetchBuffer, fetchText } from './segment-fetcher.js';
-import { isMaster, parseMaster, parseMedia, pickBest } from './hls-parser.js';
+import { hasSeparateAudioGroup, isMaster, parseMaster, parseMedia, pickBest } from './hls-parser.js';
 import { assembleMp4 } from './ffmpeg-concat.js';
 import { saveState, deleteState, type JobState } from './resume-store.js';
 import { segmentsDir } from '../storage/app-data.js';
@@ -44,6 +44,11 @@ export async function prepareHlsState(req: DownloadJobRequest, outputPath: strin
   let mediaUrl = req.url;
 
   if (isMaster(text)) {
+    // Separate audio rendition -> the segment engine would produce silent video.
+    // Signal the job manager to use ffmpeg (which muxes audio groups correctly).
+    if (hasSeparateAudioGroup(text)) {
+      throw Object.assign(new Error('separate audio group'), { code: 'use_ffmpeg' });
+    }
     const best = pickBest(parseMaster(text, req.url));
     if (!best) throw Object.assign(new Error('No variant found'), { code: 'no_variant' });
     mediaUrl = best.playlistUrl;
@@ -74,10 +79,13 @@ function segName(i: number): string {
   return `seg_${String(i).padStart(6, '0')}.ts`;
 }
 
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
 export async function runHlsJob(
   state: JobState,
   control: JobControl,
   concurrency: number,
+  bandwidthBytesPerSec: number | undefined,
   cb: EngineCallbacks,
 ): Promise<void> {
   const total = state.segments.length;
@@ -121,6 +129,12 @@ export async function runHlsJob(
       state.downloadedBytes += buf.length;
       if (++persistCounter % 10 === 0) saveState(state);
       report('Downloading');
+      // Bandwidth cap: pace the aggregate download to the limit.
+      if (bandwidthBytesPerSec && bandwidthBytesPerSec > 0) {
+        const elapsed = (Date.now() - startTime) / 1000;
+        const target = state.downloadedBytes / bandwidthBytesPerSec;
+        if (target > elapsed) await sleep(Math.min(2000, (target - elapsed) * 1000));
+      }
     }
   }
 

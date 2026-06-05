@@ -67,7 +67,15 @@
         <h2>Stream downloading</h2>
         <label class="field">
           Concurrent segment downloads
-          <input type="number" min="1" max="12" data-key="streamConcurrency" />
+          <input type="number" min="1" max="16" data-key="streamConcurrency" />
+        </label>
+        <label class="field">
+          Max simultaneous downloads
+          <input type="number" min="1" max="8" data-key="maxParallelDownloads" />
+        </label>
+        <label class="field">
+          Speed limit (MB/s, 0 = unlimited)
+          <input type="number" min="0" step="0.5" data-key="bandwidthLimitMbps" />
         </label>
         <label class="field">
           Desktop-helper download folder

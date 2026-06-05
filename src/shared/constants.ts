@@ -126,8 +126,12 @@ export interface Settings {
   preferredFormat: 'original' | 'mp4' | 'mkv' | 'webm';
   filenameTemplate: string;
   nativeHelperEnabled: boolean;
-  /** Concurrent segment downloads for in-browser stream downloading. */
+  /** Concurrent segment downloads (in-browser and native). */
   streamConcurrency: number;
+  /** Max simultaneous downloads in the native helper's queue. */
+  maxParallelDownloads: number;
+  /** Download speed cap in MB/s (0 = unlimited). */
+  bandwidthLimitMbps: number;
   /** Output folder for desktop-helper downloads (empty = ~/Downloads/MediaSnifferPro). */
   downloadFolder: string;
   /** Desktop notifications when a download finishes. */
@@ -158,6 +162,8 @@ export const DEFAULT_SETTINGS: Settings = {
   filenameTemplate: '{title}.{ext}',
   nativeHelperEnabled: false,
   streamConcurrency: 6,
+  maxParallelDownloads: 3,
+  bandwidthLimitMbps: 0,
   downloadFolder: '',
   notificationsEnabled: true,
   inPageWidgetEnabled: false,

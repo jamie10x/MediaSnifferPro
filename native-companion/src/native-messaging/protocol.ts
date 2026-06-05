@@ -24,6 +24,10 @@ export interface DownloadJobRequest {
   mode?: 'video' | 'audio' | 'subtitle';
   /** Editing operation (trim/convert/compress/audio) — overrides plain download. */
   edit?: EditSpec;
+  /** Tuning: concurrent segments, parallel jobs, bandwidth cap (bytes/sec, 0=off). */
+  segmentConcurrency?: number;
+  maxParallel?: number;
+  bandwidthBytesPerSec?: number;
   headers?: { referer?: string; origin?: string; userAgent?: string };
 }
 

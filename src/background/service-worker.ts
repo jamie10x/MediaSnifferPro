@@ -36,7 +36,7 @@ import {
 } from './candidate-store';
 import { installNetworkListener, updateNetworkConfig, type NetworkHit } from './network-listener';
 import { installTabLifecycle } from './tab-lifecycle';
-import { installDownloadEvents, startDownload, startEdit, startSubtitleDownload } from './download-manager';
+import { installDownloadEvents, nativeTuning, startDownload, startEdit, startSubtitleDownload } from './download-manager';
 import {
   cancelNativeDownload,
   getNativeStatus,
@@ -813,6 +813,7 @@ async function handoffToNative(tabId: number, job: DownloadJob): Promise<boolean
     outputFilename: job.outputFilename,
     outputDirectory: settings.downloadFolder || undefined,
     variantId: job.variantId,
+    ...nativeTuning(settings),
     headers: buildReplayHeaders(candidate),
   });
   if (!res.accepted) {

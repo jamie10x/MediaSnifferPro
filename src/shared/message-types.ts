@@ -130,6 +130,9 @@ export interface DownloadJobRequest {
   variantId?: string;
   mode?: 'video' | 'audio' | 'subtitle';
   edit?: EditSpec;
+  segmentConcurrency?: number;
+  maxParallel?: number;
+  bandwidthBytesPerSec?: number;
   /** Non-sensitive headers to replay against Referer-checking CDNs (no cookies). */
   headers?: { referer?: string; origin?: string; userAgent?: string };
 }

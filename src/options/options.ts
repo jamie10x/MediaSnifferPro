@@ -55,6 +55,8 @@ function collect(base: Settings): Settings {
         const target = next as unknown as Record<string, unknown>;
         if (el instanceof HTMLInputElement && el.type === 'checkbox') {
           target[key] = el.checked;
+        } else if (el instanceof HTMLInputElement && el.type === 'number') {
+          target[key] = Number(el.value) || 0;
         } else {
           target[key] = el.value;
         }

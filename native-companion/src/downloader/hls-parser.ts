@@ -22,6 +22,14 @@ export function isMaster(text: string): boolean {
   return text.includes('#EXT-X-STREAM-INF');
 }
 
+/** True if the master declares a separate AUDIO rendition group with its own URI
+ *  (so the video variant playlist would be video-only -> silent if we only grab it). */
+export function hasSeparateAudioGroup(text: string): boolean {
+  return text
+    .split(/\r?\n/)
+    .some((l) => l.startsWith('#EXT-X-MEDIA') && /TYPE=AUDIO/i.test(l) && /URI="/i.test(l));
+}
+
 export interface MasterVariant {
   bandwidth: number;
   height?: number;
