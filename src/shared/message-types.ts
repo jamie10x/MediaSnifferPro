@@ -2,7 +2,7 @@
 //   - Runtime messages: content <-> background <-> popup/options.
 //   - Native messages: background <-> native companion (designed now, host stubbed).
 
-import type { DownloadJob, MediaCandidate } from './types';
+import type { DownloadJob, EditSpec, MediaCandidate } from './types';
 
 // ---------------------------------------------------------------------------
 // Raw candidate payload sent from the content script (background enriches it).
@@ -64,8 +64,10 @@ export type UiRequest =
   | { type: 'RESCAN'; tabId: number }
   | { type: 'START_DOWNLOAD'; candidateId: string; variantId?: string; mode?: 'video' | 'audio' }
   | { type: 'DOWNLOAD_SUBTITLE'; candidateId: string; subtitleUrl: string; label?: string }
+  | { type: 'EDIT_DOWNLOAD'; candidateId: string; edit: EditSpec }
   | { type: 'BATCH_DOWNLOAD'; candidateIds: string[] }
   | { type: 'CANCEL_DOWNLOAD'; jobId: string }
+  | { type: 'RETRY_JOB'; jobId: string }
   | { type: 'PAUSE_DOWNLOAD'; jobId: string }
   | { type: 'RESUME_DOWNLOAD'; jobId: string }
   | { type: 'OPEN_JOB_FOLDER'; jobId: string }
@@ -127,6 +129,7 @@ export interface DownloadJobRequest {
   outputDirectory?: string;
   variantId?: string;
   mode?: 'video' | 'audio' | 'subtitle';
+  edit?: EditSpec;
   /** Non-sensitive headers to replay against Referer-checking CDNs (no cookies). */
   headers?: { referer?: string; origin?: string; userAgent?: string };
 }

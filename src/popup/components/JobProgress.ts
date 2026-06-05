@@ -70,9 +70,10 @@ export interface JobProgressProps {
   onResume: (jobId: string) => void;
   onOpenFolder: (jobId: string) => void;
   onDismiss: (jobId: string) => void;
+  onRetry: (jobId: string) => void;
 }
 
-export function JobProgress({ job, onCancel, onPause, onResume, onOpenFolder, onDismiss }: JobProgressProps): HTMLElement {
+export function JobProgress({ job, onCancel, onPause, onResume, onOpenFolder, onDismiss, onRetry }: JobProgressProps): HTMLElement {
   const active = job.status === 'downloading' || job.status === 'preparing' || job.status === 'remuxing';
   const isNative = job.type === 'native_hls' || job.type === 'native_dash';
   const canPause = job.type === 'native_hls';
@@ -108,13 +109,15 @@ export function JobProgress({ job, onCancel, onPause, onResume, onOpenFolder, on
   meta.textContent = statusLine(job);
   wrap.appendChild(meta);
 
-  const terminal = job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled' || job.status === 'blocked';
+  const retryable = job.status === 'failed' || job.status === 'blocked' || job.status === 'cancelled';
+  const terminal = job.status === 'completed' || retryable;
   const actions = document.createElement('div');
   actions.className = 'job-actions';
   if (isNative && job.status === 'downloading' && canPause) actions.appendChild(iconButton('pause', 'Pause', '', () => onPause(job.id)));
   if (isNative && job.status === 'paused') actions.appendChild(iconButton('resume', 'Resume', '', () => onResume(job.id)));
   if (isNative && (active || job.status === 'paused')) actions.appendChild(iconButton('cancel', 'Cancel', 'danger', () => onCancel(job.id)));
   if (isNative && job.status === 'completed') actions.appendChild(iconButton('folder', 'Open folder', '', () => onOpenFolder(job.id)));
+  if (retryable) actions.appendChild(iconButton('refresh', 'Retry', '', () => onRetry(job.id)));
   if (terminal) actions.appendChild(iconButton('cancel', 'Dismiss', '', () => onDismiss(job.id)));
   if (actions.childElementCount > 0) wrap.appendChild(actions);
 

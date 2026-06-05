@@ -7,6 +7,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { mkdirSync, existsSync } from 'node:fs';
 import { dirname } from 'node:path';
 import ffmpegStatic from 'ffmpeg-static';
+import type { EditSpec } from '../native-messaging/protocol.js';
 
 const staticPath = ffmpegStatic as unknown as string | null;
 const FFMPEG = staticPath && existsSync(staticPath) ? staticPath : 'ffmpeg';
@@ -15,7 +16,43 @@ export interface FfmpegJob {
   url: string;
   outputPath: string;
   mode?: 'video' | 'audio' | 'subtitle';
+  edit?: EditSpec;
   headers?: { referer?: string; origin?: string; userAgent?: string };
+}
+
+function hmsToSec(v: string): number {
+  if (/^\d+(\.\d+)?$/.test(v)) return parseFloat(v);
+  const p = v.split(':').map(Number);
+  if (p.some(Number.isNaN)) return 0;
+  return p.reduce((acc, n) => acc * 60 + n, 0);
+}
+
+const FAST = ['-movflags', '+faststart'];
+const ADTS = ['-bsf:a', 'aac_adtstoasc'];
+
+/** Output-stage ffmpeg args for an editing operation. */
+function editArgs(edit: EditSpec): string[] {
+  switch (edit.op) {
+    case 'trim': {
+      const start = edit.start ? hmsToSec(edit.start) : 0;
+      const end = edit.end ? hmsToSec(edit.end) : 0;
+      const dur = end > start ? end - start : 0;
+      return [...(dur > 0 ? ['-t', String(dur)] : []), '-c', 'copy', ...ADTS, ...FAST];
+    }
+    case 'convert':
+      if (edit.container === 'webm') return ['-c:v', 'libvpx-vp9', '-b:v', '0', '-crf', '32', '-c:a', 'libopus', '-b:a', '128k'];
+      return ['-c', 'copy', ...ADTS, ...FAST]; // mp4 / mkv container change
+    case 'compress': {
+      const crf = edit.level === 'small' ? '30' : '26';
+      const ab = edit.level === 'small' ? '96k' : '128k';
+      return ['-c:v', 'libx264', '-crf', crf, '-preset', 'veryfast', '-c:a', 'aac', '-b:a', ab, ...FAST];
+    }
+    case 'audio':
+    default:
+      if (edit.audioFormat === 'mp3') return ['-vn', '-c:a', 'libmp3lame', '-q:a', '2'];
+      if (edit.audioFormat === 'flac') return ['-vn', '-c:a', 'flac'];
+      return ['-vn', '-c:a', 'copy', ...ADTS]; // m4a
+  }
 }
 
 export interface FfmpegProgress {
@@ -56,13 +93,16 @@ function buildArgs(job: FfmpegJob): string[] {
     'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
   args.push('-user_agent', ua);
 
+  // Fast input-seek for trims (keyframe-aligned, no full decode).
+  if (job.edit?.op === 'trim' && job.edit.start) args.push('-ss', String(hmsToSec(job.edit.start)));
+
   args.push('-i', job.url);
 
-  if (job.mode === 'audio') {
-    // Extract audio only, preserve codec into an .m4a container.
+  if (job.edit) {
+    args.push(...editArgs(job.edit));
+  } else if (job.mode === 'audio') {
     args.push('-vn', '-map', '0:a:0?', '-c:a', 'copy', '-bsf:a', 'aac_adtstoasc');
   } else if (job.mode === 'subtitle') {
-    // Convert a subtitle track/playlist to .srt.
     args.push('-map', '0:s:0?');
   } else {
     args.push('-map', '0:v:0?', '-map', '0:a:0?', '-c', 'copy', '-bsf:a', 'aac_adtstoasc', '-movflags', '+faststart');

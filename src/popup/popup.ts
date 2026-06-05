@@ -24,6 +24,7 @@ const modalRoot = $('modal-root');
 
 let view: 'detected' | 'history' = 'detected';
 let history: HistoryEntry[] = [];
+let historyQuery = '';
 let lastState: PopupState | null = null;
 const selection = new Set<string>();
 
@@ -114,6 +115,10 @@ function render(state: PopupState): void {
         },
         onOpenFolder: (jobId) => void popupStore.request({ type: 'OPEN_JOB_FOLDER', jobId }),
         onDismiss: (jobId) => void popupStore.request({ type: 'DISMISS_JOB', jobId }),
+        onRetry: (jobId) => {
+          void popupStore.request({ type: 'RETRY_JOB', jobId });
+          showToast('Retrying…', 'info', 1400);
+        },
       }),
     ),
   );
@@ -158,10 +163,7 @@ function renderDetected(state: PopupState): void {
           void popupStore.request({ type: 'START_DOWNLOAD', candidateId, variantId });
           showToast('Download started', 'info', 1600);
         },
-        onDownloadAudio: (candidateId) => {
-          void popupStore.request({ type: 'START_DOWNLOAD', candidateId, mode: 'audio' });
-          showToast('Extracting audio…', 'info', 1600);
-        },
+        onTools: showTools,
         onDownloadSubtitle: (candidateId, url, label) => {
           void popupStore.request({ type: 'DOWNLOAD_SUBTITLE', candidateId, subtitleUrl: url, label });
           showToast('Downloading subtitle…', 'info', 1600);
@@ -221,25 +223,58 @@ function batchToolbar(batchable: MediaCandidate[]): HTMLElement {
 
 function renderHistory(): void {
   listEl.replaceChildren();
-  countEl.innerHTML = `<b>${history.length}</b> download${history.length === 1 ? '' : 's'}`;
 
   if (history.length === 0) {
+    countEl.innerHTML = `<b>0</b> downloads`;
     listEl.appendChild(EmptyState('No downloads yet', 'Your completed downloads will appear here.'));
     return;
   }
 
+  // Search + clear toolbar.
+  const bar = document.createElement('div');
+  bar.className = 'history-toolbar';
+  const search = document.createElement('input');
+  search.type = 'search';
+  search.className = 'history-search';
+  search.placeholder = 'Search downloads…';
+  search.value = historyQuery;
+  search.addEventListener('input', () => {
+    historyQuery = search.value;
+    renderHistory();
+    // keep focus + caret after re-render
+    const fresh = listEl.querySelector<HTMLInputElement>('.history-search');
+    if (fresh) {
+      fresh.focus();
+      fresh.setSelectionRange(historyQuery.length, historyQuery.length);
+    }
+  });
+  bar.appendChild(search);
   if (history.some((e) => e.status === 'completed')) {
-    const bar = document.createElement('div');
-    bar.className = 'history-toolbar';
     const clear = document.createElement('button');
     clear.className = 'link-btn';
     clear.textContent = 'Clear completed';
     clear.addEventListener('click', () => void popupStore.request({ type: 'CLEAR_HISTORY' }));
     bar.appendChild(clear);
-    listEl.appendChild(bar);
+  }
+  listEl.appendChild(bar);
+
+  const q = historyQuery.trim().toLowerCase();
+  const filtered = q
+    ? history.filter((e) => `${e.filename} ${e.domain} ${e.quality ?? ''}`.toLowerCase().includes(q))
+    : history;
+  countEl.innerHTML = `<b>${filtered.length}</b> download${filtered.length === 1 ? '' : 's'}`;
+
+  if (filtered.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'empty-sub';
+    empty.style.textAlign = 'center';
+    empty.style.padding = '24px';
+    empty.textContent = 'No matches.';
+    listEl.appendChild(empty);
+    return;
   }
 
-  for (const e of history) {
+  for (const e of filtered) {
     listEl.appendChild(
       HistoryItem({
         entry: e,
@@ -257,6 +292,118 @@ function renderHistory(): void {
       }),
     );
   }
+}
+
+function openModal(title: string): { modal: HTMLElement; close: () => void } {
+  const backdrop = document.createElement('div');
+  backdrop.className = 'modal-backdrop';
+  backdrop.addEventListener('click', (e) => {
+    if (e.target === backdrop) backdrop.remove();
+  });
+  const modal = document.createElement('div');
+  modal.className = 'modal';
+  const h = document.createElement('h3');
+  h.textContent = title;
+  modal.appendChild(h);
+  backdrop.appendChild(modal);
+  modalRoot.appendChild(backdrop);
+  return { modal, close: () => backdrop.remove() };
+}
+
+function toolSection(title: string): HTMLElement {
+  const sec = document.createElement('div');
+  sec.className = 'tool-section';
+  const t = document.createElement('div');
+  t.className = 'tool-title';
+  t.textContent = title;
+  sec.appendChild(t);
+  return sec;
+}
+
+function pill(label: string, onClick: () => void): HTMLButtonElement {
+  const b = document.createElement('button');
+  b.className = 'tool-pill';
+  b.textContent = label;
+  b.addEventListener('click', onClick);
+  return b;
+}
+
+function showTools(c: MediaCandidate): void {
+  const { modal, close } = openModal('Edit & convert');
+  const run = (edit: import('@shared/types').EditSpec, msg: string): void => {
+    void popupStore.request({ type: 'EDIT_DOWNLOAD', candidateId: c.id, edit });
+    showToast(msg, 'info', 1800);
+    close();
+  };
+
+  // Trim
+  const trim = toolSection('Trim a clip');
+  const row = document.createElement('div');
+  row.className = 'tool-row';
+  const start = document.createElement('input');
+  start.type = 'text';
+  start.className = 'tool-time';
+  start.placeholder = 'Start  0:00';
+  const end = document.createElement('input');
+  end.type = 'text';
+  end.className = 'tool-time';
+  end.placeholder = 'End  0:30';
+  const go = pill('Download clip', () => {
+    if (!start.value && !end.value) {
+      showToast('Enter a start and/or end time', 'error');
+      return;
+    }
+    run({ op: 'trim', start: start.value || undefined, end: end.value || undefined }, 'Trimming clip…');
+  });
+  go.classList.add('primary-pill');
+  row.append(start, end, go);
+  trim.appendChild(row);
+  modal.appendChild(trim);
+
+  // Convert
+  const conv = toolSection('Convert format');
+  const convRow = document.createElement('div');
+  convRow.className = 'tool-row wrap';
+  (['mp4', 'mkv', 'webm'] as const).forEach((container) =>
+    convRow.appendChild(
+      pill(container.toUpperCase(), () => run({ op: 'convert', container }, `Converting to ${container.toUpperCase()}…`)),
+    ),
+  );
+  conv.appendChild(convRow);
+  modal.appendChild(conv);
+
+  // Compress
+  const comp = toolSection('Compress (re-encode smaller)');
+  const compRow = document.createElement('div');
+  compRow.className = 'tool-row wrap';
+  compRow.appendChild(pill('Balanced', () => run({ op: 'compress', level: 'balanced' }, 'Compressing…')));
+  compRow.appendChild(pill('Smaller', () => run({ op: 'compress', level: 'small' }, 'Compressing…')));
+  comp.appendChild(compRow);
+  modal.appendChild(comp);
+
+  // Audio
+  const aud = toolSection('Extract audio');
+  const audRow = document.createElement('div');
+  audRow.className = 'tool-row wrap';
+  (['m4a', 'mp3', 'flac'] as const).forEach((audioFormat) =>
+    audRow.appendChild(
+      pill(audioFormat.toUpperCase(), () => run({ op: 'audio', audioFormat }, `Extracting ${audioFormat.toUpperCase()}…`)),
+    ),
+  );
+  aud.appendChild(audRow);
+  modal.appendChild(aud);
+
+  const note = document.createElement('div');
+  note.className = 'tool-note';
+  note.textContent = 'Editing runs through the desktop helper and downloads the full media first.';
+  modal.appendChild(note);
+
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'secondary';
+  closeBtn.textContent = 'Close';
+  closeBtn.style.marginTop = '12px';
+  closeBtn.addEventListener('click', close);
+  modal.appendChild(closeBtn);
 }
 
 function detailRow(key: string, value: string): HTMLElement {

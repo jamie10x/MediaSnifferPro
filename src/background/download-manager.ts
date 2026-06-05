@@ -3,7 +3,7 @@
 //   - HLS/DASH clear -> native companion if installed, else copy_url_only.
 //   - Protected/DRM  -> blocked, never attempted.
 
-import type { DownloadJob, MediaCandidate } from '@shared/types';
+import type { DownloadJob, EditSpec, MediaCandidate } from '@shared/types';
 import type { StreamDownloadJob } from '@shared/message-types';
 import { buildFilename } from '@shared/filename-utils';
 import { getExtension } from '@shared/url-utils';
@@ -146,6 +146,51 @@ async function startAudioExtraction(
     jobId: job.id,
     kind,
     mode: 'audio',
+    url: resolveDownloadUrl(candidate, variantId),
+    outputFilename,
+    outputDirectory: settings.downloadFolder || undefined,
+    headers: buildReplayHeaders(candidate),
+  });
+  job.status = res.accepted ? 'downloading' : 'failed';
+  if (!res.accepted) job.error = { code: 'native_rejected', message: res.error ?? 'rejected', recoverable: true };
+  await upsertJob(candidate.tabId, job);
+  onJobUpdate(job);
+  return job;
+}
+
+/** Run an editing op (trim/convert/compress/audio) via native ffmpeg. */
+export async function startEdit(
+  candidate: MediaCandidate,
+  edit: EditSpec,
+  onJobUpdate: (job: DownloadJob) => void,
+): Promise<DownloadJob> {
+  const settings = await loadSettings();
+  const base = stripExt(buildFilename(candidate, settings.filenameTemplate));
+  const suffix = edit.op === 'trim' ? '-clip' : edit.op === 'compress' ? '-compressed' : '';
+  const outputFilename = `${base}${suffix}.mp4`; // native corrects the extension per op
+  const native = await getNativeStatus();
+  if (!native.installed) {
+    const job = newJob(candidate, {
+      type: 'native_dash',
+      status: 'blocked',
+      outputFilename,
+      error: { code: 'native_required', message: 'Install the desktop helper to edit/convert media.', recoverable: true },
+    });
+    await upsertJob(candidate.tabId, job);
+    onJobUpdate(job);
+    return job;
+  }
+
+  const variantId = pickVariantId(candidate, settings.preferredQuality);
+  const job = newJob(candidate, { type: 'native_dash', status: 'preparing', variantId, outputFilename });
+  await upsertJob(candidate.tabId, job);
+  onJobUpdate(job);
+
+  const kind = candidate.mediaType === 'dash' ? 'dash' : candidate.mediaType === 'hls' ? 'hls' : 'direct';
+  const res = await startNativeDownload({
+    jobId: job.id,
+    kind,
+    edit,
     url: resolveDownloadUrl(candidate, variantId),
     outputFilename,
     outputDirectory: settings.downloadFolder || undefined,

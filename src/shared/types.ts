@@ -146,6 +146,15 @@ export interface StreamVariant {
   supportStatus: VariantSupportStatus;
 }
 
+export interface EditSpec {
+  op: 'trim' | 'convert' | 'compress' | 'audio';
+  start?: string;
+  end?: string;
+  container?: 'mp4' | 'mkv' | 'webm';
+  level?: 'small' | 'balanced';
+  audioFormat?: 'm4a' | 'mp3' | 'flac';
+}
+
 export type DownloadJobType =
   | 'browser_direct'
   | 'native_direct'

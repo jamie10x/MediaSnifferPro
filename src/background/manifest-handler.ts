@@ -37,13 +37,30 @@ export async function parseManifestForCandidate(
   if (realType === 'hls') {
     const result = parseHls(text, candidate.url);
     if (result.isMaster) {
-      return applyVariants(base, result.variants, result.subtitles);
+      const enriched = applyVariants(base, result.variants, result.subtitles);
+      // Fetch the best variant's media playlist to learn the total duration.
+      const best = bestVariant(result.variants);
+      if (best?.playlistUrl) {
+        const mediaText = await fetchText(best.playlistUrl);
+        if (mediaText) {
+          const media = parseHls(mediaText, best.playlistUrl);
+          if (!media.isMaster && media.estimatedDurationSeconds > 0) {
+            enriched.durationSeconds = media.estimatedDurationSeconds;
+          }
+        }
+      }
+      return enriched;
     }
     // Media playlist: encryption check only.
     if (result.protection.isDrmLikely || result.protection.isEncryptedLikely) {
       return markProtected(base, result.protection.reason ?? HLS_PROTECTED_MESSAGE);
     }
-    return { ...base, supportStatus: 'downloadable', updatedAt: Date.now() };
+    return {
+      ...base,
+      supportStatus: 'downloadable',
+      durationSeconds: result.estimatedDurationSeconds || base.durationSeconds,
+      updatedAt: Date.now(),
+    };
   }
 
   // DASH
@@ -52,6 +69,12 @@ export async function parseManifestForCandidate(
     return markProtected(base, result.protection.reason ?? DASH_PROTECTED_MESSAGE);
   }
   return applyVariants(base, result.variants, undefined);
+}
+
+function bestVariant(variants: StreamVariant[]): StreamVariant | undefined {
+  return variants
+    .slice()
+    .sort((a, b) => (b.height ?? 0) - (a.height ?? 0) || (b.bandwidth ?? 0) - (a.bandwidth ?? 0))[0];
 }
 
 function applyVariants(
@@ -64,10 +87,13 @@ function applyVariants(
   // Clear HLS is downloadable in-browser; clear DASH still needs the native helper.
   const clearStatus = candidate.mediaType === 'hls' ? 'downloadable' : 'needs_native_companion';
   const supportStatus = anyDrm ? 'protected_likely' : anyEncrypted ? 'unsupported' : clearStatus;
+  const top = bestVariant(variants);
   return {
     ...candidate,
     variants,
     subtitles: subtitles ?? candidate.subtitles,
+    width: top?.width ?? candidate.width,
+    height: top?.height ?? candidate.height,
     supportStatus,
     isDrmLikely: anyDrm || candidate.isDrmLikely,
     isEncryptedLikely: anyEncrypted || candidate.isEncryptedLikely,

@@ -22,6 +22,8 @@ export const icons = {
   pause: svg('<rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/>', 'fill="currentColor" stroke="none"'),
   resume: svg('<path d="M8 5v14l11-7z"/>', 'fill="currentColor" stroke="none"'),
   clock: svg('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'),
+  scissors: svg('<circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4 8.12 15.88"/><path d="M14.47 14.48 20 20"/><path d="M8.12 8.12 12 12"/>'),
+  convert: svg('<path d="M3 7h13l-3-3"/><path d="M21 17H8l3 3"/>'),
 };
 
 export function iconEl(name: keyof typeof icons, className = 'icon'): HTMLElement {

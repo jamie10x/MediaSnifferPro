@@ -64,8 +64,8 @@ function displaySub(c: MediaCandidate): string {
 export interface MediaItemProps {
   candidate: MediaCandidate;
   onDownload: (candidateId: string, variantId?: string) => void;
-  onDownloadAudio: (candidateId: string) => void;
   onDownloadSubtitle: (candidateId: string, url: string, label?: string) => void;
+  onTools: (candidate: MediaCandidate) => void;
   onCopy: (candidateId: string) => void;
   onDetails: (candidate: MediaCandidate) => void;
   onParse: (candidateId: string) => void;
@@ -199,7 +199,7 @@ export function MediaItem(props: MediaItemProps): HTMLElement {
     actions.appendChild(button('primary', 'download', 'Download', () => props.onDownload(c.id)));
   }
   if (videoish && downloadable && !isProtected) {
-    actions.appendChild(button('secondary', 'audio', 'Audio', () => props.onDownloadAudio(c.id)));
+    actions.appendChild(button('secondary', 'scissors', 'Tools', () => props.onTools(c)));
   }
   if (isStream && !isProtected) {
     const label = c.variants && c.variants.length ? 'Refresh' : 'Quality';

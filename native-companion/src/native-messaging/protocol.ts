@@ -4,6 +4,15 @@
 // length prefix, on stdin/stdout. These types MUST stay in sync with the
 // extension's src/shared/message-types.ts (NativeRequest / NativeResponse).
 
+export interface EditSpec {
+  op: 'trim' | 'convert' | 'compress' | 'audio';
+  start?: string; // trim, "HH:MM:SS" / "MM:SS" / seconds
+  end?: string; // trim
+  container?: 'mp4' | 'mkv' | 'webm'; // convert
+  level?: 'small' | 'balanced'; // compress
+  audioFormat?: 'm4a' | 'mp3' | 'flac'; // audio
+}
+
 export interface DownloadJobRequest {
   jobId: string;
   kind: 'direct' | 'hls' | 'dash';
@@ -13,6 +22,8 @@ export interface DownloadJobRequest {
   variantId?: string;
   /** 'video' (default) | 'audio' (extract audio) | 'subtitle' (convert to .srt). */
   mode?: 'video' | 'audio' | 'subtitle';
+  /** Editing operation (trim/convert/compress/audio) — overrides plain download. */
+  edit?: EditSpec;
   headers?: { referer?: string; origin?: string; userAgent?: string };
 }
 

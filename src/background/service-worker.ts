@@ -36,7 +36,7 @@ import {
 } from './candidate-store';
 import { installNetworkListener, updateNetworkConfig, type NetworkHit } from './network-listener';
 import { installTabLifecycle } from './tab-lifecycle';
-import { installDownloadEvents, startDownload, startSubtitleDownload } from './download-manager';
+import { installDownloadEvents, startDownload, startEdit, startSubtitleDownload } from './download-manager';
 import {
   cancelNativeDownload,
   getNativeStatus,
@@ -75,6 +75,7 @@ async function pushState(tabId: number): Promise<void> {
   const state = await buildTabState(tabId);
   pushToTab(tabId, { type: 'STATE_UPDATED', state });
   void pushWidget(tabId);
+  scheduleBadge();
 }
 
 // Build + send the in-page widget summary to a tab's content script.
@@ -118,6 +119,43 @@ async function pushWidget(tabId: number): Promise<void> {
 
 function pushJob(tabId: number, job: DownloadJob): void {
   pushToTab(tabId, { type: 'JOB_UPDATED', job });
+  scheduleBadge();
+}
+
+// --- toolbar badge: live download progress / active count ------------------
+let badgeTimer: ReturnType<typeof setTimeout> | null = null;
+function scheduleBadge(): void {
+  if (badgeTimer) return;
+  badgeTimer = setTimeout(() => {
+    badgeTimer = null;
+    void updateBadge();
+  }, 500);
+}
+
+async function updateBadge(): Promise<void> {
+  const tabIds = (await chrome.tabs.query({})).map((t) => t.id).filter((id): id is number => id != null);
+  let active = 0;
+  let downloading = 0;
+  let percent = 0;
+  for (const tabId of tabIds) {
+    for (const job of await listJobs(tabId)) {
+      if (['downloading', 'preparing', 'remuxing', 'queued', 'paused'].includes(job.status)) active += 1;
+      if (job.status === 'downloading') {
+        downloading += 1;
+        percent = job.progress.percent;
+      }
+    }
+  }
+  const text = active === 0 ? '' : active === 1 && downloading === 1 ? `${Math.round(percent)}%` : String(active);
+  try {
+    await chrome.action.setBadgeText({ text });
+    if (text) {
+      await chrome.action.setBadgeBackgroundColor({ color: '#0d9488' });
+      if (chrome.action.setBadgeTextColor) await chrome.action.setBadgeTextColor({ color: '#ffffff' });
+    }
+  } catch {
+    /* ignore */
+  }
 }
 
 function pushHistoryUpdated(): void {
@@ -415,6 +453,13 @@ async function handleUiRequest(req: UiRequest, sender: chrome.runtime.MessageSen
       await pushState(candidate.tabId);
       return { type: 'OK' };
     }
+    case 'EDIT_DOWNLOAD': {
+      const candidate = await findCandidateAnyTab(req.candidateId);
+      if (!candidate) return { type: 'ERROR', message: 'candidate_not_found' };
+      await startEdit(candidate, req.edit, (job) => pushJob(candidate.tabId, job));
+      await pushState(candidate.tabId);
+      return { type: 'OK' };
+    }
     case 'BATCH_DOWNLOAD': {
       let tab: number | null = null;
       const seen = new Set<string>();
@@ -431,6 +476,17 @@ async function handleUiRequest(req: UiRequest, sender: chrome.runtime.MessageSen
     }
     case 'CANCEL_DOWNLOAD': {
       await cancelNativeDownload(req.jobId);
+      return { type: 'OK' };
+    }
+    case 'RETRY_JOB': {
+      const loc = await findJobLocation(req.jobId);
+      if (!loc) return { type: 'ERROR', message: 'job_not_found' };
+      const candidate = await findCandidateAnyTab(loc.job.candidateId);
+      if (!candidate) return { type: 'ERROR', message: 'candidate_not_found' };
+      const mode = loc.job.outputFilename.endsWith('.m4a') ? 'audio' : 'video';
+      await removeJob(loc.tabId, req.jobId);
+      await startDownload(candidate, loc.job.variantId, (job) => pushJob(candidate.tabId, job), mode);
+      await pushState(loc.tabId);
       return { type: 'OK' };
     }
     case 'PAUSE_DOWNLOAD': {

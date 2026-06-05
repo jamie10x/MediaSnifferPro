@@ -32,10 +32,16 @@ function activeCount(): number {
   return n;
 }
 
-function ensureExt(name: string, mode: DownloadJobRequest['mode']): string {
-  const base = name.replace(/\.(mp4|mkv|webm|m4a|mp3|aac|srt|vtt)$/i, '');
-  if (mode === 'audio') return `${base}.m4a`;
-  if (mode === 'subtitle') return `${base}.srt`;
+function ensureExt(name: string, req: DownloadJobRequest): string {
+  const base = name.replace(/\.(mp4|mkv|webm|m4a|mp3|flac|aac|srt|vtt)$/i, '');
+  const edit = req.edit;
+  if (edit) {
+    if (edit.op === 'audio') return `${base}.${edit.audioFormat ?? 'm4a'}`;
+    if (edit.op === 'convert') return `${base}.${edit.container ?? 'mp4'}`;
+    return `${base}.mp4`; // trim / compress
+  }
+  if (req.mode === 'audio') return `${base}.m4a`;
+  if (req.mode === 'subtitle') return `${base}.srt`;
   return `${base}.mp4`;
 }
 
@@ -49,7 +55,7 @@ export function startJob(req: DownloadJobRequest, requestId: string, send: Send)
 
   let outputPath: string;
   try {
-    outputPath = resolveOutputPath(req.outputDirectory, ensureExt(sanitizeFilename(req.outputFilename, 'video'), req.mode));
+    outputPath = resolveOutputPath(req.outputDirectory, ensureExt(sanitizeFilename(req.outputFilename, 'video'), req));
   } catch (err) {
     send({ type: 'JOB_FAILED', jobId: req.jobId, error: { code: 'bad_output_path', message: (err as Error).message } });
     return;
@@ -85,9 +91,9 @@ async function runJob(tracked: Tracked): Promise<void> {
   tracked.status = 'running';
   const { req, send } = tracked;
 
-  // Audio extraction & subtitle conversion always go through ffmpeg directly
-  // (the segment engine is video-only). Plain video HLS uses the segment engine.
-  if (req.kind === 'hls' && (req.mode ?? 'video') === 'video') {
+  // Audio/subtitle/edit jobs always go through ffmpeg directly (the segment
+  // engine is plain-video only). Plain video HLS uses the segment engine.
+  if (req.kind === 'hls' && (req.mode ?? 'video') === 'video' && !req.edit) {
     await runHls(tracked, send);
   } else {
     runFfmpegJob(tracked, send);
@@ -144,7 +150,7 @@ async function runHls(tracked: Tracked, send: Send, resumeState?: JobState): Pro
 function runFfmpegJob(tracked: Tracked, send: Send): void {
   const { req, outputPath } = tracked;
   const handle = runFfmpeg(
-    { url: req.url, outputPath, mode: req.mode ?? 'video', headers: req.headers },
+    { url: req.url, outputPath, mode: req.mode ?? 'video', edit: req.edit, headers: req.headers },
     {
       onProgress: (p) =>
         send({
