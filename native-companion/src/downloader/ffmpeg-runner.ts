@@ -17,7 +17,14 @@ export interface FfmpegJob {
   outputPath: string;
   mode?: 'video' | 'audio' | 'subtitle';
   edit?: EditSpec;
+  title?: string;
+  coverPath?: string;
   headers?: { referer?: string; origin?: string; userAgent?: string };
+}
+
+/** Title metadata args (safe for any container). */
+export function titleMeta(title?: string): string[] {
+  return title ? ['-metadata', `title=${title}`] : [];
 }
 
 function hmsToSec(v: string): number {
@@ -98,16 +105,23 @@ function buildArgs(job: FfmpegJob): string[] {
 
   args.push('-i', job.url);
 
+  // Cover art only on plain-video MP4 output (copy-based, lowest risk).
+  const withCover = !!job.coverPath && !job.edit && (job.mode ?? 'video') === 'video';
+  if (withCover) args.push('-i', job.coverPath!);
+
   if (job.edit) {
     args.push(...editArgs(job.edit));
   } else if (job.mode === 'audio') {
     args.push('-vn', '-map', '0:a:0?', '-c:a', 'copy', '-bsf:a', 'aac_adtstoasc');
   } else if (job.mode === 'subtitle') {
     args.push('-map', '0:s:0?');
+  } else if (withCover) {
+    args.push('-map', '0:v:0?', '-map', '0:a:0?', '-map', '1:0', '-c', 'copy', '-bsf:a', 'aac_adtstoasc', '-disposition:v:1', 'attached_pic', '-movflags', '+faststart');
   } else {
     args.push('-map', '0:v:0?', '-map', '0:a:0?', '-c', 'copy', '-bsf:a', 'aac_adtstoasc', '-movflags', '+faststart');
   }
 
+  args.push(...titleMeta(job.title));
   args.push('-progress', 'pipe:1', '-y', job.outputPath);
   return args;
 }

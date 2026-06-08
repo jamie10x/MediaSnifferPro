@@ -86,6 +86,7 @@ export async function runHlsJob(
   control: JobControl,
   concurrency: number,
   bandwidthBytesPerSec: number | undefined,
+  finishing: { title?: string; coverPath?: string },
   cb: EngineCallbacks,
 ): Promise<void> {
   const total = state.segments.length;
@@ -167,6 +168,8 @@ export async function runHlsJob(
       outputPath: state.outputPath,
       isFmp4: state.isFmp4,
       initPath: state.initSegmentUrl ? join(state.tempDir, 'init.mp4') : undefined,
+      title: finishing.title,
+      coverPath: finishing.coverPath,
     });
   } catch (err) {
     cb.onError('remux_failed', err instanceof Error ? err.message : 'remux failed');

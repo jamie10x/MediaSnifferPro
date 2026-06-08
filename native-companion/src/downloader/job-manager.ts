@@ -3,6 +3,7 @@
 
 import { rmSync } from 'node:fs';
 import { runFfmpeg } from './ffmpeg-runner.js';
+import { downloadCover } from './cover.js';
 import { JobControl, prepareHlsState, runHlsJob } from './hls-segment-engine.js';
 import { loadState, deleteState, type JobState } from './resume-store.js';
 import { assertNotProtected, resolveOutputPath, sanitizeFilename } from '../security/sanitizer.js';
@@ -104,7 +105,7 @@ async function runJob(tracked: Tracked): Promise<void> {
   if (req.kind === 'hls' && (req.mode ?? 'video') === 'video' && !req.edit) {
     await runHls(tracked, send);
   } else {
-    runFfmpegJob(tracked, send);
+    void runFfmpegJob(tracked, send);
   }
 }
 
@@ -121,7 +122,7 @@ async function runHls(tracked: Tracked, send: Send, resumeState?: JobState): Pro
     // Streams with a separate audio group would download silent through the
     // segment engine — let ffmpeg handle them (it muxes audio groups correctly).
     if (code === 'use_ffmpeg') {
-      runFfmpegJob(tracked, send);
+      void runFfmpegJob(tracked, send);
       return;
     }
     send({ type: 'JOB_FAILED', jobId: req.jobId, error: { code, message: (err as Error).message } });
@@ -130,7 +131,10 @@ async function runHls(tracked: Tracked, send: Send, resumeState?: JobState): Pro
   }
   tracked.state = state;
 
-  await runHlsJob(state, control, segmentConcurrency, bandwidthBytesPerSec, {
+  // Best-effort cover art for the final MP4.
+  const coverPath = req.coverUrl ? await downloadCover(req.jobId, req.coverUrl, req.headers) : null;
+
+  await runHlsJob(state, control, segmentConcurrency, bandwidthBytesPerSec, { title: req.title, coverPath: coverPath ?? undefined }, {
     onProgress: (p) =>
       send({
         type: 'JOB_PROGRESS',
@@ -161,10 +165,12 @@ async function runHls(tracked: Tracked, send: Send, resumeState?: JobState): Pro
   });
 }
 
-function runFfmpegJob(tracked: Tracked, send: Send): void {
+async function runFfmpegJob(tracked: Tracked, send: Send): Promise<void> {
   const { req, outputPath } = tracked;
+  const wantsCover = req.coverUrl && !req.edit && (req.mode ?? 'video') === 'video';
+  const coverPath = wantsCover ? await downloadCover(req.jobId, req.coverUrl!, req.headers) : null;
   const handle = runFfmpeg(
-    { url: req.url, outputPath, mode: req.mode ?? 'video', edit: req.edit, headers: req.headers },
+    { url: req.url, outputPath, mode: req.mode ?? 'video', edit: req.edit, title: req.title, coverPath: coverPath ?? undefined, headers: req.headers },
     {
       onProgress: (p) =>
         send({

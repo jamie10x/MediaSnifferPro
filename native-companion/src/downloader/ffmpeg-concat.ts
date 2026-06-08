@@ -39,9 +39,13 @@ export async function assembleMp4(opts: {
   outputPath: string;
   isFmp4: boolean;
   initPath?: string;
+  title?: string;
+  coverPath?: string;
 }): Promise<void> {
   mkdirSync(dirname(opts.outputPath), { recursive: true });
   const segFiles = orderedSegmentFiles(opts.tempDir);
+  const meta = opts.title ? ['-metadata', `title=${opts.title}`] : [];
+  const cover = opts.coverPath;
 
   if (opts.isFmp4) {
     // Binary-concat init + fragments into one file, then remux for a clean MP4.
@@ -50,21 +54,20 @@ export async function assembleMp4(opts: {
     if (opts.initPath) await appendFile(opts.initPath, out);
     for (const f of segFiles) await appendFile(f, out);
     await new Promise<void>((res) => out.end(res));
-    await runFfmpeg(['-y', '-i', combined, '-c', 'copy', '-movflags', '+faststart', opts.outputPath]);
+    const args = ['-y', '-i', combined];
+    if (cover) args.push('-i', cover);
+    args.push('-map', '0', ...(cover ? ['-map', '1:0', '-c', 'copy', '-disposition:v:1', 'attached_pic'] : ['-c', 'copy']));
+    args.push(...meta, '-movflags', '+faststart', opts.outputPath);
+    await runFfmpeg(args);
     return;
   }
 
   // TS: concat demuxer over a list file.
   const listPath = join(opts.tempDir, 'concat.txt');
   writeFileSync(listPath, segFiles.map((f) => `file '${f.replace(/'/g, "'\\''")}'`).join('\n'), 'utf8');
-  await runFfmpeg([
-    '-y',
-    '-f', 'concat',
-    '-safe', '0',
-    '-i', listPath,
-    '-c', 'copy',
-    '-bsf:a', 'aac_adtstoasc',
-    '-movflags', '+faststart',
-    opts.outputPath,
-  ]);
+  const args = ['-y', '-f', 'concat', '-safe', '0', '-i', listPath];
+  if (cover) args.push('-i', cover);
+  args.push(...(cover ? ['-map', '0', '-map', '1:0', '-c', 'copy', '-disposition:v:1', 'attached_pic'] : ['-c', 'copy']));
+  args.push('-bsf:a', 'aac_adtstoasc', ...meta, '-movflags', '+faststart', opts.outputPath);
+  await runFfmpeg(args);
 }

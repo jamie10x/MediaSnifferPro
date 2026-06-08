@@ -136,6 +136,8 @@ export interface Settings {
   downloadFolder: string;
   /** Desktop notifications when a download finishes. */
   notificationsEnabled: boolean;
+  /** Embed the title + poster (cover art) into downloaded files. */
+  embedMetadata: boolean;
   /** Show a floating download button on pages with downloadable media. */
   inPageWidgetEnabled: boolean;
   /** Domains where the in-page widget is disabled (per-site). */
@@ -166,6 +168,7 @@ export const DEFAULT_SETTINGS: Settings = {
   bandwidthLimitMbps: 0,
   downloadFolder: '',
   notificationsEnabled: true,
+  embedMetadata: true,
   inPageWidgetEnabled: false,
   widgetDisabledDomains: [],
   privacyMode: true,

@@ -28,6 +28,9 @@ export interface DownloadJobRequest {
   segmentConcurrency?: number;
   maxParallel?: number;
   bandwidthBytesPerSec?: number;
+  /** Embed a title (metadata) and poster (cover art) into the output. */
+  title?: string;
+  coverUrl?: string;
   headers?: { referer?: string; origin?: string; userAgent?: string };
 }
 

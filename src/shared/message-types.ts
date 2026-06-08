@@ -133,6 +133,8 @@ export interface DownloadJobRequest {
   segmentConcurrency?: number;
   maxParallel?: number;
   bandwidthBytesPerSec?: number;
+  title?: string;
+  coverUrl?: string;
   /** Non-sensitive headers to replay against Referer-checking CDNs (no cookies). */
   headers?: { referer?: string; origin?: string; userAgent?: string };
 }

@@ -204,7 +204,7 @@ async function recordTerminal(job: DownloadJob, outputPath?: string): Promise<vo
   };
   await addHistory(entry);
   pushHistoryUpdated();
-  void notifyJobDone(job, via === 'native' ? () => openOutputFolder(job.id) : undefined);
+  void notifyJobDone(job, via === 'native' ? () => openOutputFolder(job.id) : undefined, candidate?.posterUrl);
 }
 
 function candidateFromRedownload(entry: HistoryEntry, tabId: number): MediaCandidate {
@@ -813,7 +813,7 @@ async function handoffToNative(tabId: number, job: DownloadJob): Promise<boolean
     outputFilename: job.outputFilename,
     outputDirectory: settings.downloadFolder || undefined,
     variantId: job.variantId,
-    ...nativeTuning(settings),
+    ...nativeTuning(settings, candidate),
     headers: buildReplayHeaders(candidate),
   });
   if (!res.accepted) {

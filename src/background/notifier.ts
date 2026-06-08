@@ -17,7 +17,7 @@ export function installNotificationClicks(): void {
   });
 }
 
-export async function notifyJobDone(job: DownloadJob, onClick?: () => void): Promise<void> {
+export async function notifyJobDone(job: DownloadJob, onClick?: () => void, posterUrl?: string): Promise<void> {
   const settings = await loadSettings();
   if (!settings.notificationsEnabled) return;
   if (!chrome.notifications?.create) return;
@@ -34,14 +34,20 @@ export async function notifyJobDone(job: DownloadJob, onClick?: () => void): Pro
       : job.outputFilename;
 
   const id = `msp-${job.id}`;
+  const base: chrome.notifications.NotificationOptions<true> = {
+    type: 'basic',
+    iconUrl: chrome.runtime.getURL('public/icons/icon128.png'),
+    title,
+    message,
+    silent: false,
+  };
+  // Rich image notification with the poster for completed downloads.
+  const opts: chrome.notifications.NotificationOptions<true> =
+    posterUrl && job.status === 'completed'
+      ? { ...base, type: 'image', imageUrl: posterUrl }
+      : base;
   try {
-    chrome.notifications.create(id, {
-      type: 'basic',
-      iconUrl: chrome.runtime.getURL('public/icons/icon128.png'),
-      title,
-      message,
-      silent: false,
-    });
+    chrome.notifications.create(id, opts);
     if (onClick) clickActions.set(id, onClick);
   } catch (err) {
     logger.debug('notify failed', err);
