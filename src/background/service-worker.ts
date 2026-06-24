@@ -425,6 +425,39 @@ function handleNetworkHit(hit: NetworkHit): void {
   })();
 }
 
+// Ingest a user-supplied URL (paste box / right-click) as a manual candidate.
+async function addManualUrl(tabId: number, url: string): Promise<MediaCandidate | null> {
+  if (!/^https?:\/\//i.test(url.trim())) return null;
+  const cand = await ingest({ tabId, url: url.trim(), source: 'manual' });
+  if (cand && cand.isManifest && !cand.isDrmLikely && !cand.variants) {
+    const updated = await parseManifestForCandidate(cand);
+    if (updated) {
+      await upsertCandidate(updated);
+      return updated;
+    }
+  }
+  return cand;
+}
+
+async function downloadManualUrl(tabId: number, url: string): Promise<void> {
+  const cand = await addManualUrl(tabId, url);
+  if (cand && (cand.supportStatus === 'downloadable' || cand.supportStatus === 'needs_native_companion')) {
+    await startDownload(cand, undefined, (job) => pushJob(cand.tabId, job));
+  }
+  await pushState(tabId);
+}
+
+function setupContextMenu(): void {
+  if (!chrome.contextMenus) return;
+  chrome.contextMenus.removeAll(() => {
+    chrome.contextMenus.create({
+      id: 'msp-download',
+      title: 'Download with MediaSniffer Pro',
+      contexts: ['link', 'video', 'audio'],
+    });
+  });
+}
+
 // --- message routing -------------------------------------------------------
 async function handleUiRequest(req: UiRequest, sender: chrome.runtime.MessageSender): Promise<UiResponse> {
   switch (req.type) {
@@ -437,6 +470,17 @@ async function handleUiRequest(req: UiRequest, sender: chrome.runtime.MessageSen
     }
     case 'RESCAN': {
       await requestRescan(req.tabId);
+      return { type: 'OK' };
+    }
+    case 'ADD_URL': {
+      const tabId = sender.tab?.id ?? (await activeTabId());
+      if (tabId == null) return { type: 'ERROR', message: 'no_active_tab' };
+      const cand = await addManualUrl(tabId, req.url);
+      if (!cand) return { type: 'ERROR', message: 'invalid_url' };
+      if (cand.supportStatus === 'downloadable' || cand.supportStatus === 'needs_native_companion') {
+        await startDownload(cand, undefined, (job) => pushJob(cand.tabId, job));
+      }
+      await pushState(tabId);
       return { type: 'OK' };
     }
     case 'START_DOWNLOAD': {
@@ -614,6 +658,14 @@ function init(): void {
     },
   );
   installNotificationClicks();
+
+  // Right-click "Download with MediaSniffer Pro" on links/video/audio.
+  setupContextMenu();
+  chrome.runtime.onInstalled.addListener(setupContextMenu);
+  chrome.contextMenus?.onClicked.addListener((info, tab) => {
+    const url = info.linkUrl || info.srcUrl;
+    if (url && tab?.id != null) void downloadManualUrl(tab.id, url);
+  });
 
   setProgressHandler((msg) => {
     // Native progress/completion -> update matching job.

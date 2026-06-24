@@ -1,8 +1,12 @@
 // Native messaging wire protocol + message types.
 //
 // Chrome native messaging frames each JSON message with a 4-byte little-endian
-// length prefix, on stdin/stdout. These types MUST stay in sync with the
-// extension's src/shared/message-types.ts (NativeRequest / NativeResponse).
+// length prefix, on stdin/stdout.
+//
+// ⚠️  KEEP IN SYNC with the extension's src/shared/native-protocol.ts
+//     (EditSpec / DownloadJobRequest / NativeRequest / NativeResponse). This is a
+//     deliberate cross-process contract: the companion is a standalone program, so
+//     it declares its own copy rather than importing the extension's source.
 
 export interface EditSpec {
   op: 'trim' | 'convert' | 'compress' | 'audio';

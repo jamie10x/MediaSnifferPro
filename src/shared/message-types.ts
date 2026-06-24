@@ -62,6 +62,7 @@ export type ContentMessage =
 export type UiRequest =
   | { type: 'GET_STATE'; tabId?: number }
   | { type: 'RESCAN'; tabId: number }
+  | { type: 'ADD_URL'; url: string }
   | { type: 'START_DOWNLOAD'; candidateId: string; variantId?: string; mode?: 'video' | 'audio' }
   | { type: 'DOWNLOAD_SUBTITLE'; candidateId: string; subtitleUrl: string; label?: string }
   | { type: 'EDIT_DOWNLOAD'; candidateId: string; edit: EditSpec }
@@ -119,45 +120,9 @@ export type PushMessage =
   | { type: 'NATIVE_STATUS'; native: NativeStatus };
 
 // ---------------------------------------------------------------------------
-// background <-> native companion (Phase 4 — protocol frozen now)
+// background <-> native companion — see native-protocol.ts (single source).
 // ---------------------------------------------------------------------------
-export interface DownloadJobRequest {
-  jobId: string;
-  kind: 'direct' | 'hls' | 'dash';
-  url: string;
-  outputFilename: string;
-  outputDirectory?: string;
-  variantId?: string;
-  mode?: 'video' | 'audio' | 'subtitle';
-  edit?: EditSpec;
-  segmentConcurrency?: number;
-  maxParallel?: number;
-  bandwidthBytesPerSec?: number;
-  title?: string;
-  coverUrl?: string;
-  /** Non-sensitive headers to replay against Referer-checking CDNs (no cookies). */
-  headers?: { referer?: string; origin?: string; userAgent?: string };
-}
-
-export type NativeRequest =
-  | { type: 'PING'; requestId: string }
-  | { type: 'START_DOWNLOAD'; requestId: string; job: DownloadJobRequest }
-  | { type: 'CANCEL_DOWNLOAD'; requestId: string; jobId: string }
-  | { type: 'PAUSE_DOWNLOAD'; requestId: string; jobId: string }
-  | { type: 'RESUME_DOWNLOAD'; requestId: string; jobId: string }
-  | { type: 'GET_JOB_STATUS'; requestId: string; jobId: string }
-  | { type: 'OPEN_OUTPUT_FOLDER'; requestId: string; jobId: string }
-  | { type: 'PICK_FOLDER'; requestId: string };
-
-export type NativeResponse =
-  | { type: 'PONG'; requestId: string; version: string }
-  | { type: 'JOB_ACCEPTED'; requestId: string; jobId: string }
-  | { type: 'JOB_QUEUED'; jobId: string; position: number }
-  | { type: 'JOB_PROGRESS'; jobId: string; progress: DownloadJob['progress'] }
-  | { type: 'JOB_PAUSED'; jobId: string }
-  | { type: 'JOB_COMPLETED'; jobId: string; outputPath: string }
-  | { type: 'JOB_FAILED'; jobId: string; error: { code: string; message: string } }
-  | { type: 'FOLDER_PICKED'; requestId: string; path: string | null };
+export type { DownloadJobRequest, NativeRequest, NativeResponse } from './native-protocol';
 
 // ---------------------------------------------------------------------------
 // background <-> offscreen document (in-browser HLS download engine)

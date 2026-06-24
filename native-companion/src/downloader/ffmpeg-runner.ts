@@ -37,8 +37,8 @@ function hmsToSec(v: string): number {
 const FAST = ['-movflags', '+faststart'];
 const ADTS = ['-bsf:a', 'aac_adtstoasc'];
 
-/** Output-stage ffmpeg args for an editing operation. */
-function editArgs(edit: EditSpec): string[] {
+/** Output-stage ffmpeg args for an editing operation. (Exported for tests.) */
+export function editArgs(edit: EditSpec): string[] {
   switch (edit.op) {
     case 'trim': {
       const start = edit.start ? hmsToSec(edit.start) : 0;

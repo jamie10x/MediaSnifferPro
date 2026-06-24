@@ -1,6 +1,17 @@
 import './options.css';
 import type { Settings } from '@shared/constants';
 import { loadSettings, saveSettings } from '@shared/settings';
+import { expandTemplate, type TemplateContext } from '@shared/filename-utils';
+
+const SAMPLE_CTX: TemplateContext = {
+  title: "Marvel's Daredevil - S01E11",
+  pageTitle: "Marvel's Daredevil - S01E11",
+  domain: 'streamzy.to',
+  quality: '1080p',
+  mediaType: 'hls',
+  ext: 'mp4',
+  date: new Date().toISOString().slice(0, 10),
+};
 
 type El = HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
 
@@ -73,9 +84,19 @@ function splitLines(text: string): string[] {
     .filter(Boolean);
 }
 
+function updateFilenamePreview(): void {
+  const input = document.querySelector<HTMLInputElement>('[data-key="filenameTemplate"]');
+  const preview = document.getElementById('filename-preview');
+  if (!input || !preview) return;
+  const tpl = input.value.trim() || '{title}.{ext}';
+  preview.textContent = `Example: ${expandTemplate(tpl, SAMPLE_CTX)}`;
+}
+
 async function main(): Promise<void> {
   let settings = await loadSettings();
   fill(settings);
+  updateFilenamePreview();
+  document.querySelector<HTMLInputElement>('[data-key="filenameTemplate"]')?.addEventListener('input', updateFilenamePreview);
 
   document.getElementById('pick-folder')!.addEventListener('click', async () => {
     const res = (await chrome.runtime.sendMessage({ type: 'PICK_FOLDER' })) as

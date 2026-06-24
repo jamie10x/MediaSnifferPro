@@ -24,9 +24,16 @@ export default defineManifest({
     'nativeMessaging',
     'notifications',
     'offscreen',
+    'contextMenus',
   ],
   optional_permissions: ['tabs'],
   host_permissions: ['<all_urls>'],
+  commands: {
+    _execute_action: {
+      suggested_key: { default: 'Ctrl+Shift+Y', mac: 'Command+Shift+Y' },
+      description: 'Open MediaSniffer Pro',
+    },
+  },
   background: {
     service_worker: 'src/background/service-worker.ts',
     type: 'module',

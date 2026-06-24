@@ -432,6 +432,33 @@ body {
   box-shadow: 0 0 0 1px var(--accent);
 }
 
+/* ---------- Add URL bar ---------- */
+.addurl-bar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.addurl-input {
+  flex: 1;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  color: var(--text);
+  padding: 8px 11px;
+  font-size: 12px;
+  font-family: inherit;
+}
+.addurl-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.addurl-input::placeholder {
+  color: var(--faint);
+}
+.addurl-bar .btn-sm {
+  flex: none;
+}
+
 /* ---------- Batch toolbar ---------- */
 .batch-bar {
   display: flex;

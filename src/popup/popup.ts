@@ -127,16 +127,43 @@ function render(state: PopupState): void {
   else renderDetected(state);
 }
 
+function addUrlBar(): HTMLElement {
+  const bar = document.createElement('div');
+  bar.className = 'addurl-bar';
+  const input = document.createElement('input');
+  input.type = 'url';
+  input.className = 'addurl-input';
+  input.placeholder = 'Paste a video or .m3u8 URL…';
+  const btn = document.createElement('button');
+  btn.className = 'btn-sm';
+  btn.textContent = 'Add';
+  const submit = (): void => {
+    const u = input.value.trim();
+    if (!u) return;
+    void popupStore.request({ type: 'ADD_URL', url: u });
+    showToast('Adding URL…', 'info', 1400);
+    input.value = '';
+  };
+  btn.addEventListener('click', submit);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') submit();
+  });
+  bar.append(input, btn);
+  return bar;
+}
+
 function renderDetected(state: PopupState): void {
   listEl.replaceChildren();
   const candidates = (state.tab?.candidates ?? []).filter((c) => !c.isSegment);
   countEl.innerHTML = `<b>${candidates.length}</b> item${candidates.length === 1 ? '' : 's'}`;
 
+  listEl.appendChild(addUrlBar());
+
   if (candidates.length === 0) {
     listEl.appendChild(
       state.loading
         ? EmptyState('Scanning this page…', 'Looking for video, audio and streams.', true)
-        : EmptyState('No media found yet', 'Press play on a video, then hit the ⟳ button to rescan.'),
+        : EmptyState('No media found yet', 'Press play on a video, or paste a URL above.'),
     );
     return;
   }

@@ -10,44 +10,49 @@ are otherwise legally allowed to save.
 
 ## What it does
 
-- Detects direct video/audio files (MP4, WebM, MOV, M4V, MP3, M4A, AAC, OGG, WAV, FLAC…).
-- **Downloads clear (non-DRM) HLS (`.m3u8`) streams to MP4 entirely in your browser** —
-  fetches the segments and remuxes them via mux.js in an offscreen document. No desktop app.
-- Detects DASH (`.mpd`) streams and lists variants (DASH remux is deferred to the
-  future native helper this round).
-- Detects subtitles and thumbnails.
-- Downloads direct files via the browser's own download manager.
-- Flags DRM/encrypted/protected media with a clear unsupported message — never decrypts.
-- Keeps everything local — no analytics, no browsing-history upload.
+- **Detects** direct video/audio files (MP4, WebM, MOV, M4V, MP3, M4A, AAC, OGG, WAV, FLAC…),
+  HLS (`.m3u8`) and DASH (`.mpd`) streams, subtitles, and thumbnails — across DOM, shadow DOM,
+  the Performance API, and network requests (including cross-origin iframe players).
+- **Downloads clear (non-DRM) HLS to MP4**: simple MPEG-TS HLS is transmuxed in-browser via
+  mux.js; complex/large streams (fMP4, separate audio, DASH, Referer-locked CDNs) go to the
+  **native companion** (real ffmpeg) with pause/resume, a queue, retry, and resume-on-restart.
+- **Batch download**, **quality auto-select**, **subtitle download**, **audio extraction**
+  (M4A/MP3/FLAC), and **editing tools** (trim, convert MP4/MKV/WebM, compress) via ffmpeg.
+- **Download history**, **desktop notifications**, a toolbar progress badge, an optional
+  **in-page floating button**, **paste-a-URL** and a right-click download menu.
+- Embeds the **title + poster (cover art)** into finished files.
+- Flags DRM/encrypted/protected media as unsupported — **never decrypts**.
+- **Privacy-first**: everything local; no analytics, no browsing-history upload, no accounts.
 
-### Stream download engine
+## Architecture
 
-Clear HLS is downloaded and transmuxed in an **offscreen document**:
+Two local pieces — **no website, no server**:
 
 ```
-popup → service worker → offscreen document → engine router
-        → mux.js (default: TS → MP4, fMP4 concat)
-        → ffmpeg.wasm (optional fallback, behind a setting; packaged locally)
-        → Blob → chrome.downloads
+Chrome MV3 extension                          Native companion (native-companion/)
+  popup / options / in-page widget              Node + ffmpeg-static, headless
+  background service worker                      ← Chrome Native Messaging →
+    detection store + network listener            segment-level HLS engine
+    offscreen doc → mux.js (clear TS HLS)         (pause/resume/queue/retry/resume-store)
+    chrome.downloads (direct files)               ffmpeg: DASH/fMP4/large, edit, audio, subs
 ```
 
-mux.js is the default engine. ffmpeg.wasm is an optional fallback (off by default);
-its core is not bundled in this build — see `src/offscreen/engines/ffmpeg-engine.ts`
-for how to package it locally (required for MV3 — no remote code).
+The extension handles detection + simple in-browser HLS; the native companion does the
+heavy/complex jobs. Clear (non-DRM) media only — protected streams are refused on both sides.
 
 ## Project layout
 
 ```
 src/
-  background/   service worker: detection store, network listener, downloads, native bridge
-  content/      page detectors: DOM, shadow DOM, performance API, page signals
-  popup/        popup UI (vanilla TS + CSS)
+  background/   service worker: detection store, network listener, downloads, native bridge,
+                history, notifier, offscreen + context-menu wiring
+  content/      page detectors (DOM, shadow DOM, performance, page signals) + in-page widget
+  offscreen/    in-browser HLS engine (mux.js) running in an offscreen document
+  popup/        popup UI (vanilla TS + CSS) — Detected / History tabs, components
   options/      settings page
-  shared/       framework-free types, parsers, utils (future shared package)
+  shared/       framework-free types, parsers, utils  (+ __tests__/ vitest suite)
+native-companion/  the local ffmpeg helper (separate Node package)
 ```
-
-The code is structured so `shared/` and the native-messaging protocol can later be
-extracted into a pnpm/turbo monorepo alongside the companion app without changes.
 
 ## Develop
 
@@ -55,8 +60,12 @@ extracted into a pnpm/turbo monorepo alongside the companion app without changes
 npm install
 npm run dev      # Vite dev server with HMR for popup/options
 npm run build    # type-check + production build into dist/
+npm test         # run the vitest suite (parsers, classifier, utils)
 npm run zip      # package dist/ into media-sniffer-pro.zip
 ```
+
+The **native companion** is a separate package — see
+[native-companion/README.md](./native-companion/README.md) for build + one-time install.
 
 ## Load it in Chrome
 
